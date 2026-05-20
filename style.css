@@ -1,0 +1,146 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #02040a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+canvas {
+  display: block;
+}
+
+#ui-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#top-left {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  pointer-events: auto;
+}
+
+#hamburger {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 220, 255, 0.25);
+  background: rgba(6, 12, 24, 0.72);
+  color: #eaf6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 24px rgba(80, 160, 255, 0.18);
+}
+
+#logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #f4fbff;
+}
+
+.logo-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #ffffff, #6fd4ff 30%, #1a4fff 65%, #08122e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  box-shadow:
+    0 0 24px rgba(80, 180, 255, 0.75),
+    inset 0 0 12px rgba(255, 255, 255, 0.5);
+}
+
+.logo-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.logo-subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(220, 240, 255, 0.68);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#search-box {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 220px));
+  pointer-events: auto;
+}
+
+#company-search {
+  width: 100%;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 220, 255, 0.25);
+  background: rgba(6, 12, 24, 0.72);
+  color: #f4fbff;
+  padding: 0 20px;
+  outline: none;
+  font-size: 14px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 30px rgba(80, 160, 255, 0.16);
+}
+
+#company-search::placeholder {
+  color: rgba(220, 240, 255, 0.5);
+}
+
+#side-menu {
+  position: absolute;
+  top: 82px;
+  left: 24px;
+  width: 240px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(180, 220, 255, 0.2);
+  background: rgba(6, 12, 24, 0.86);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 0 36px rgba(80, 160, 255, 0.18);
+  display: none;
+  pointer-events: auto;
+}
+
+#side-menu.open {
+  display: block;
+}
+
+#side-menu .menu-title {
+  color: #ffffff;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+#side-menu a {
+  display: block;
+  color: rgba(230, 246, 255, 0.82);
+  text-decoration: none;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+}
+
+#side-menu a:hover {
+  color: #ffffff;
+}
