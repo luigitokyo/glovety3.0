@@ -27,6 +27,7 @@ function ensureUI() {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
+
       canvas {
         display: block;
       }
@@ -84,6 +85,17 @@ function ensureUI() {
         box-shadow:
           0 0 24px rgba(80, 180, 255, 0.75),
           inset 0 0 12px rgba(255, 255, 255, 0.5);
+      }
+
+      .logo-mark.image-logo {
+        background: rgba(6, 12, 24, 0.5);
+        overflow: hidden;
+      }
+      
+      .logo-mark.image-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
       }
 
       .logo-title {
