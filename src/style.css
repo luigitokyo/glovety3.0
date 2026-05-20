@@ -10,3 +10,10 @@ body {
 canvas {
   display: block;
 }
+
+.glovety-logo-img {
+  height: 48px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 0 18px rgba(120, 190, 255, 0.35));
+}
