@@ -193,7 +193,9 @@ function ensureUI() {
         <div id="hamburger">☰</div>
 
         <div id="logo">
-          <div class="logo-mark">G</div>
+          <div class="logo-mark image-logo">
+            <img src="/glovety-logo.png" alt="Glovety Observatory" />
+            </div>
           <div class="logo-text">
             <div class="logo-title">Glovety Observatory</div>
             <div class="logo-subtitle">Corporate Gravity Map</div>
