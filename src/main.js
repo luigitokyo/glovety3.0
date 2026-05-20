@@ -27,7 +27,6 @@ function ensureUI() {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-
       canvas {
         display: block;
       }
@@ -66,50 +65,37 @@ function ensureUI() {
       }
 
       #logo {
+        height: 48px;
         display: flex;
         align-items: center;
-        gap: 12px;
-        color: #f4fbff;
       }
 
-      .logo-mark {
-        width: 42px;
-        height: 42px;
-        border-radius: 50%;
-        background: radial-gradient(circle at 30% 25%, #ffffff, #6fd4ff 30%, #1a4fff 65%, #08122e 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        letter-spacing: -0.04em;
-        box-shadow:
-          0 0 24px rgba(80, 180, 255, 0.75),
-          inset 0 0 12px rgba(255, 255, 255, 0.5);
-      }
-
-      .logo-mark.image-logo {
-        background: rgba(6, 12, 24, 0.5);
-        overflow: hidden;
-      }
-      
-      .logo-mark.image-logo img {
-        width: 100%;
-        height: 100%;
+      .glovety-logo-img {
+        height: 48px;
+        width: auto;
+        max-width: 220px;
+        display: block;
         object-fit: contain;
+        filter: drop-shadow(0 0 18px rgba(120, 190, 255, 0.35));
       }
 
-      .logo-title {
-        font-size: 16px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-      }
+      @media (max-width: 640px) {
+        #top-left {
+          top: 16px;
+          left: 16px;
+          gap: 10px;
+        }
 
-      .logo-subtitle {
-        margin-top: 2px;
-        font-size: 11px;
-        color: rgba(220, 240, 255, 0.68);
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
+        #hamburger {
+          width: 38px;
+          height: 38px;
+          font-size: 20px;
+        }
+
+        .glovety-logo-img {
+          height: 36px;
+          max-width: 170px;
+        }
       }
 
       #search-box {
@@ -205,13 +191,7 @@ function ensureUI() {
         <div id="hamburger">☰</div>
 
         <div id="logo">
-          <div class="logo-mark image-logo">
-            <img src="/glovety-logo.png" alt="Glovety Observatory" />
-            </div>
-          <div class="logo-text">
-            <div class="logo-title">Glovety Observatory</div>
-            <div class="logo-subtitle">Corporate Gravity Map</div>
-          </div>
+          <img class="glovety-logo-img" src="/glovety-logo.png" alt="Glovety Observatory" />
         </div>
       </div>
 
@@ -237,7 +217,6 @@ function ensureUI() {
     document.body.appendChild(panel);
   }
 }
-
 // ---------- scale settings ----------
 // 数字を大きくすると企業惑星同士がさらに離れます。
 // まずは 24。もっと宇宙っぽく広げたい場合は 35 / 50 に上げる。
