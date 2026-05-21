@@ -240,7 +240,7 @@ const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.1,
-  2000
+  6000
 );
 camera.position.set(650, 520, 980);
 
@@ -328,7 +328,7 @@ function addSun(position = new THREE.Vector3(90, 90, 120)) {
 }
 
 // ---------- axes ----------
-function addCustomAxes(center = new THREE.Vector3(0, 0, 0), length = 140) {
+function addCustomAxes(center = new THREE.Vector3(0, 0, 0), length = 3000) {
   const axisDefs = [
     { name: 'Human', dir: new THREE.Vector3(1, 0, 0), color: 0x5da9ff },
     { name: 'Nature', dir: new THREE.Vector3(0, 0, 1), color: 0x64ff9b },
@@ -869,9 +869,9 @@ function focusOnPlanet(planet) {
   const p = planet.position;
 
   camera.position.set(
-    p.x + 28,
-    p.y + 24,
-    p.z + 42
+    p.x + 80,
+    p.y + 65,
+    p.z + 120
   );
 
   controls.target.copy(p);
