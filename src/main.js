@@ -6,7 +6,7 @@ import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 // ======================================================
 // Glovety Observatory MVP
 // - UI fallback
-// - expanded space scale
+// - coordinate scale and gravity radius are fully separated
 // - search focus
 // - hamburger menu
 // ======================================================
@@ -173,7 +173,7 @@ function ensureUI() {
         padding: 12px;
         border-radius: 10px;
         display: none;
-        min-width: 230px;
+        min-width: 260px;
         z-index: 20;
         border: 1px solid rgba(180, 220, 255, 0.18);
         backdrop-filter: blur(12px);
@@ -217,24 +217,33 @@ function ensureUI() {
     document.body.appendChild(panel);
   }
 }
-// ---------- scale settings ----------
-// 数字を大きくすると企業惑星同士がさらに離れます。
-// まずは 24。もっと宇宙っぽく広げたい場合は 35 / 50 に上げる。
-// ---------- scale settings ----------
+
+// ======================================================
+// SCALE SETTINGS
+// ======================================================
 
 // HNE座標1.0あたりの表示距離。
-// 企業惑星同士の間隔だけを決める。
+// ここは「座標メモリの見た目間隔」だけを決める。
+// 例：600なら、HNE座標1.0 = 600 world units。
 const COORDINATE_UNIT_SCALE = 600;
 
-// CSV座標の中心。既存CSVが2.5中心ならこのまま。
+// CSV座標の中心。
+// CSVが2.5中心の座標体系ならこのまま。
 const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 
-// 重力値1.0あたりの惑星半径。
-// ここは座標スケールとは完全に独立させる。
-const GRAVITY_RADIUS_SCALE = 1.2;
+// 重力値1.0を、座標メモリ1.0に対してどれくらいの半径にするか。
+// 0.01 = 座標メモリ1.0の1%。
+// COORDINATE_UNIT_SCALE=600なら、重力1.0の半径 = 6。
+const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.01;
 
-// 最小視認半径。重力0でも見えるようにするための表示補正。
-const PLANET_BASE_RADIUS = 1.8;
+// 重力0でも最低限見えるようにする視認性補正。
+// 0.003 = 座標メモリ1.0の0.3%。
+// COORDINATE_UNIT_SCALE=600なら、最低半径 = 1.8。
+const PLANET_VISUAL_BASE_RADIUS_RATIO = 0.003;
+
+// 色の濃さだけを決める参照最大値。
+// 半径の上限ではない。
+const GRAVITY_COLOR_REFERENCE_MAX = 7;
 
 function toWorldPosition(x, y, z) {
   return new THREE.Vector3(
@@ -247,32 +256,37 @@ function toWorldPosition(x, y, z) {
 function radiusFromGravity(gravity) {
   const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
 
-  // 上限で丸めない。
-  // 重力値に比例して半径を決めるが、座標スケールとは切り離す。
-  return PLANET_BASE_RADIUS + g * GRAVITY_RADIUS_SCALE;
+  const baseRadius =
+    COORDINATE_UNIT_SCALE * PLANET_VISUAL_BASE_RADIUS_RATIO;
+
+  const gravityRadius =
+    g * COORDINATE_UNIT_SCALE * GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT;
+
+  return baseRadius + gravityRadius;
 }
 
 function colorIntensityFromGravity(gravity) {
   const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
-  return Math.min(g / 7, 1);
+  return Math.min(g / GRAVITY_COLOR_REFERENCE_MAX, 1);
 }
 
+// ======================================================
+// SCENE
+// ======================================================
 
-
-
-
-// ---------- scene ----------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0c2a);
-scene.fog = new THREE.Fog(new THREE.Color(0x0b0c2a), 900, 3200);
+scene.fog = new THREE.Fog(new THREE.Color(0x0b0c2a), 800, 3600);
 
 const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.1,
-  6000
+  8000
 );
-camera.position.set(650, 520, 980);
+
+// カメラを遠くしすぎると密集して見えるので、まずはこの距離。
+camera.position.set(520, 420, 760);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -288,21 +302,23 @@ controls.target.set(0, 0, 0);
 scene.add(new THREE.AmbientLight(0xffffff, 0.42));
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.15);
-directionalLight.position.set(70, 120, 90);
+directionalLight.position.set(500, 800, 650);
 scene.add(directionalLight);
 
 const animateCallbacks = [];
 const planetMeshes = [];
 const shootingStars = [];
 
-// ---------- info panel ----------
 const infoPanel = document.getElementById('infoPanel');
 
-// ---------- sun ----------
-addSun(new THREE.Vector3(90, 90, 120));
+// ======================================================
+// SUN
+// ======================================================
 
-function addSun(position = new THREE.Vector3(90, 90, 120)) {
-  const geometry = new THREE.SphereGeometry(5, 64, 64);
+addSun(new THREE.Vector3(650, 540, 900));
+
+function addSun(position = new THREE.Vector3(650, 540, 900)) {
+  const geometry = new THREE.SphereGeometry(10, 64, 64);
   const material = new THREE.MeshBasicMaterial({
     color: 0xffaa00
   });
@@ -311,7 +327,7 @@ function addSun(position = new THREE.Vector3(90, 90, 120)) {
   sun.position.copy(position);
   scene.add(sun);
 
-  const pointLight = new THREE.PointLight(0xffcc88, 2.2, 520, 2);
+  const pointLight = new THREE.PointLight(0xffcc88, 2.4, 5000, 2);
   pointLight.position.copy(position);
   scene.add(pointLight);
 
@@ -328,7 +344,7 @@ function addSun(position = new THREE.Vector3(90, 90, 120)) {
   });
 
   const flare = new THREE.Sprite(spriteMaterial);
-  flare.scale.set(32, 32, 1);
+  flare.scale.set(80, 80, 1);
   flare.position.copy(position);
   scene.add(flare);
 
@@ -343,7 +359,7 @@ function addSun(position = new THREE.Vector3(90, 90, 120)) {
   });
 
   const swirl = new THREE.Mesh(
-    new THREE.SphereGeometry(5.8, 64, 64),
+    new THREE.SphereGeometry(11.5, 64, 64),
     swirlMaterial
   );
   swirl.position.copy(position);
@@ -352,12 +368,15 @@ function addSun(position = new THREE.Vector3(90, 90, 120)) {
   animateCallbacks.push(() => {
     swirl.rotation.y += 0.006;
     swirl.rotation.x += 0.004;
-    const scale = 34 + Math.sin(performance.now() * 0.002) * 3;
+    const scale = 84 + Math.sin(performance.now() * 0.002) * 8;
     flare.scale.set(scale, scale, 1);
   });
 }
 
-// ---------- axes ----------
+// ======================================================
+// AXES
+// ======================================================
+
 function addCustomAxes(center = new THREE.Vector3(0, 0, 0), length = 3000) {
   const axisDefs = [
     { name: 'Human', dir: new THREE.Vector3(1, 0, 0), color: 0x5da9ff },
@@ -392,13 +411,13 @@ function addAxisNameLabels(axisDefs, center, length) {
     axisDefs.forEach(({ name, dir, color }) => {
       const textGeo = new TextGeometry(name, {
         font,
-        size: 3.4,
-        height: 0.08
+        size: 14,
+        height: 0.1
       });
 
       const textMaterial = new THREE.MeshBasicMaterial({ color });
       const mesh = new THREE.Mesh(textGeo, textMaterial);
-      mesh.position.copy(center.clone().add(dir.clone().multiplyScalar(length + 8)));
+      mesh.position.copy(center.clone().add(dir.clone().multiplyScalar(length + 80)));
       scene.add(mesh);
     });
   });
@@ -406,13 +425,16 @@ function addAxisNameLabels(axisDefs, center, length) {
 
 addCustomAxes();
 
-// ---------- galaxy stars ----------
-function addGalaxyStars(count = 5200) {
+// ======================================================
+// BACKGROUND STARS
+// ======================================================
+
+function addGalaxyStars(count = 7000) {
   const geometry = new THREE.BufferGeometry();
   const positions = [];
 
   for (let i = 0; i < count; i++) {
-    const r = Math.random() * 420 + 80;
+    const r = Math.random() * 2600 + 300;
     const theta = Math.random() * 2 * Math.PI;
     const phi = Math.random() * Math.PI;
 
@@ -427,9 +449,9 @@ function addGalaxyStars(count = 5200) {
 
   const material = new THREE.PointsMaterial({
     color: 0xffffff,
-    size: 0.55,
+    size: 1.2,
     transparent: true,
-    opacity: 0.85
+    opacity: 0.82
   });
 
   const points = new THREE.Points(geometry, material);
@@ -438,22 +460,25 @@ function addGalaxyStars(count = 5200) {
 
 addGalaxyStars();
 
-// ---------- shooting stars ----------
+// ======================================================
+// SHOOTING STARS
+// ======================================================
+
 function addShootingStar() {
-  const geometry = new THREE.SphereGeometry(0.65, 8, 8);
+  const geometry = new THREE.SphereGeometry(1.2, 8, 8);
   const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const star = new THREE.Mesh(geometry, material);
 
   star.position.set(
-    Math.random() * 420 - 210,
-    Math.random() * 220 - 20,
-    Math.random() * 420 - 210
+    Math.random() * 3000 - 1500,
+    Math.random() * 1600 - 400,
+    Math.random() * 3000 - 1500
   );
 
   star.velocity = new THREE.Vector3(
-    Math.random() * -1.3 - 0.4,
-    Math.random() * -1.0 - 0.3,
-    Math.random() * -1.1 - 0.2
+    Math.random() * -4.0 - 1.0,
+    Math.random() * -3.0 - 0.8,
+    Math.random() * -3.5 - 0.8
   );
 
   shootingStars.push(star);
@@ -462,7 +487,10 @@ function addShootingStar() {
 
 setInterval(addShootingStar, 3200);
 
-// ---------- supernova ----------
+// ======================================================
+// SUPERNOVA
+// ======================================================
+
 function triggerSupernova() {
   const particleCount = 320;
   const geometry = new THREE.BufferGeometry();
@@ -473,7 +501,7 @@ function triggerSupernova() {
   for (let i = 0; i < particleCount; i++) {
     positions.push(origin.x, origin.y, origin.z);
 
-    const speed = Math.random() * 0.35 + 0.12;
+    const speed = Math.random() * 0.8 + 0.25;
     const theta = Math.random() * 2 * Math.PI;
     const phi = Math.acos(2 * Math.random() - 1);
 
@@ -488,7 +516,7 @@ function triggerSupernova() {
 
   const material = new THREE.PointsMaterial({
     color: 0xffffcc,
-    size: 0.8,
+    size: 1.6,
     transparent: true,
     opacity: 0.9
   });
@@ -527,15 +555,17 @@ function triggerSupernova() {
 }
 
 setInterval(() => {
-  if (Math.random() < 0.08) triggerSupernova();
+  if (Math.random() < 0.06) triggerSupernova();
 }, 4000);
 
-// ---------- planets ----------
-function createPlanet({ name, position, gravity, colorOverride, rawPosition }) {
-  const safeGravity = Number.isFinite(gravity) ? gravity : 0.5;
+// ======================================================
+// PLANETS
+// ======================================================
 
-  const baseRadius = 2.2;
-  const radius = baseRadius * (0.8 + safeGravity);
+function createPlanet({ name, position, gravity, colorOverride, rawPosition }) {
+  const safeGravity = Number.isFinite(gravity) ? gravity : 0;
+  const radius = radiusFromGravity(safeGravity);
+  const gravityIntensity = colorIntensityFromGravity(safeGravity);
 
   const geometry = new THREE.SphereGeometry(radius, 32, 32);
 
@@ -544,8 +574,8 @@ function createPlanet({ name, position, gravity, colorOverride, rawPosition }) {
     color = new THREE.Color(colorOverride);
   } else {
     const hue = 0.6;
-    const saturation = 0.1 + safeGravity * 0.7;
-    const lightness = 0.25 + safeGravity * 0.5;
+    const saturation = 0.25 + gravityIntensity * 0.55;
+    const lightness = 0.28 + gravityIntensity * 0.35;
     color = new THREE.Color().setHSL(hue, saturation, lightness);
   }
 
@@ -562,7 +592,8 @@ function createPlanet({ name, position, gravity, colorOverride, rawPosition }) {
   sphere.userData = {
     name,
     gravity: safeGravity,
-    rawPosition
+    rawPosition,
+    radius
   };
 
   scene.add(sphere);
@@ -608,19 +639,20 @@ function addPlanetLabel(name, position, radius) {
   });
 
   const sprite = new THREE.Sprite(spriteMaterial);
-  sprite.scale.set(18, 9, 1);
-  sprite.position.copy(position).add(new THREE.Vector3(0, radius + 5.5, 0));
+
+  // ラベルは惑星半径と完全連動させすぎない。
+  // 巨大惑星でもラベルが巨大化しないよう控えめにする。
+  const labelWidth = Math.max(38, Math.min(90, radius * 2.2));
+  sprite.scale.set(labelWidth, labelWidth * 0.45, 1);
+
+  sprite.position.copy(position).add(new THREE.Vector3(0, radius + 12, 0));
   scene.add(sprite);
 }
 
-// ---------- CSV ----------
-function scalePosition(x, y, z) {
-  return new THREE.Vector3(
-    SPACE_CENTER.x + (parseFloat(x) - SPACE_CENTER.x) * SPACE_SCALE,
-    SPACE_CENTER.y + (parseFloat(y) - SPACE_CENTER.y) * SPACE_SCALE,
-    SPACE_CENTER.z + (parseFloat(z) - SPACE_CENTER.z) * SPACE_SCALE
-  );
-}
+// ======================================================
+// CSV
+// ======================================================
+
 function loadPlanetsFromCSV(url) {
   fetch(url)
     .then((response) => response.text())
@@ -634,26 +666,29 @@ function loadPlanetsFromCSV(url) {
         const rawX = parseFloat(x);
         const rawY = parseFloat(y);
         const rawZ = parseFloat(z);
+        const rawGravity = parseFloat(gravity);
 
         createPlanet({
           name: name.trim(),
           position: toWorldPosition(rawX, rawY, rawZ),
-          gravity: parseFloat(gravity),
+          gravity: rawGravity,
           rawPosition: new THREE.Vector3(rawX, rawY, rawZ)
         });
       });
 
-      checkAndAddGalaxies(80);
+      checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
     })
     .catch((error) => {
       console.error('Failed to load CSV:', error);
     });
 }
 
-
 loadPlanetsFromCSV('companies_002.csv');
 
-// ---------- axis planets ----------
+// ======================================================
+// AXIS PLANETS
+// ======================================================
+
 function createAxisPlanets() {
   createPlanet({
     name: 'Humanus',
@@ -673,7 +708,10 @@ function createAxisPlanets() {
     rawPosition: new THREE.Vector3(2, 2, 8)
   });
 
-  const ringGeometry = new THREE.RingGeometry(5.8, 6.3, 64);
+  const ringRadiusInner = COORDINATE_UNIT_SCALE * 0.012;
+  const ringRadiusOuter = COORDINATE_UNIT_SCALE * 0.014;
+
+  const ringGeometry = new THREE.RingGeometry(ringRadiusInner, ringRadiusOuter, 64);
   const ringMaterial = new THREE.MeshBasicMaterial({
     color: '#00ff88',
     side: THREE.DoubleSide,
@@ -697,8 +735,11 @@ function createAxisPlanets() {
 
 createAxisPlanets();
 
-// ---------- galaxy clustering ----------
-function addGalaxyAround(center, radius = 14, count = 1000) {
+// ======================================================
+// GALAXY CLUSTERING
+// ======================================================
+
+function addGalaxyAround(center, radius = COORDINATE_UNIT_SCALE * 0.08, count = 1000) {
   const geometry = new THREE.BufferGeometry();
   const positions = [];
 
@@ -707,7 +748,7 @@ function addGalaxyAround(center, radius = 14, count = 1000) {
     const r = Math.sqrt(Math.random()) * radius;
 
     const x = center.x + r * Math.cos(angle);
-    const y = center.y + (Math.random() - 0.5) * 2.2;
+    const y = center.y + (Math.random() - 0.5) * radius * 0.12;
     const z = center.z + r * Math.sin(angle);
 
     positions.push(x, y, z);
@@ -717,7 +758,7 @@ function addGalaxyAround(center, radius = 14, count = 1000) {
 
   const material = new THREE.PointsMaterial({
     color: 0x8899ff,
-    size: 0.8,
+    size: 1.0,
     transparent: true,
     opacity: 0.34
   });
@@ -726,7 +767,7 @@ function addGalaxyAround(center, radius = 14, count = 1000) {
   scene.add(points);
 }
 
-function checkAndAddGalaxies(threshold = 24) {
+function checkAndAddGalaxies(threshold = COORDINATE_UNIT_SCALE * 0.12) {
   const maxGalaxies = 6;
   let added = 0;
 
@@ -746,11 +787,14 @@ function checkAndAddGalaxies(threshold = 24) {
   }
 }
 
-// ---------- RSS observation point / spiral galaxy ----------
-function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius = 28, baseSpeed = 0.0007) {
+// ======================================================
+// RSS OBSERVATION POINT
+// ======================================================
+
+function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius = COORDINATE_UNIT_SCALE * 0.16, baseSpeed = 0.0007) {
   const positions = [];
 
-  const a = 0.3;
+  const a = 0.8;
   const b = 0.23;
 
   for (let i = 0; i < particleCount; i++) {
@@ -761,7 +805,7 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
 
     const noise = (Math.random() - 0.5) * 0.7;
     const x = r * Math.cos(theta + noise);
-    const y = (Math.random() - 0.5) * 2.2;
+    const y = (Math.random() - 0.5) * radius * 0.08;
     const z = r * Math.sin(theta + noise);
 
     positions.push(x, y, z);
@@ -772,7 +816,7 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
 
   const material = new THREE.PointsMaterial({
     color: 0xffffff,
-    size: 0.22,
+    size: 0.9,
     transparent: true,
     opacity: 0.88,
     depthWrite: false
@@ -787,9 +831,10 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
 
   scene.add(group);
 
-  // 観測点の中心マーカー
+  const markerRadius = COORDINATE_UNIT_SCALE * 0.01;
+
   const marker = new THREE.Mesh(
-    new THREE.SphereGeometry(2.2, 32, 32),
+    new THREE.SphereGeometry(markerRadius, 32, 32),
     new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
@@ -799,7 +844,7 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
   marker.position.copy(center);
   scene.add(marker);
 
-  addPlanetLabel('GRSS Observation Point', center, 2.2);
+  addPlanetLabel('GRSS Observation Point', center, markerRadius);
 
   animateCallbacks.push(() => {
     group.rotation.y += baseSpeed;
@@ -808,14 +853,16 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
 
 addSpiralRSSGalaxy(toWorldPosition(5.602, 2.28, 2.812));
 
-// ---------- click info ----------
+// ======================================================
+// CLICK INFO
+// ======================================================
+
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 window.addEventListener('pointerdown', (event) => {
   const clickedElement = event.target;
 
-  // UIクリック時は3Dクリック判定しない
   if (
     clickedElement.closest &&
     (clickedElement.closest('#ui-layer') || clickedElement.closest('#infoPanel'))
@@ -842,7 +889,7 @@ window.addEventListener('pointerdown', (event) => {
 function showCompanyInfo(planet) {
   if (!planet || !infoPanel) return;
 
-  const { name, gravity, rawPosition } = planet.userData;
+  const { name, gravity, rawPosition, radius } = planet.userData;
   const worldPosition = planet.position;
 
   const rawText = rawPosition
@@ -852,14 +899,19 @@ function showCompanyInfo(planet) {
   infoPanel.innerHTML = `
     <strong>${name}</strong><br>
     Gravity: ${gravity.toFixed(2)}<br>
+    Radius: ${radius.toFixed(1)}<br>
     ${rawText}<br>
-    World: (${worldPosition.x.toFixed(1)}, ${worldPosition.y.toFixed(1)}, ${worldPosition.z.toFixed(1)})
+    World: (${worldPosition.x.toFixed(1)}, ${worldPosition.y.toFixed(1)}, ${worldPosition.z.toFixed(1)})<br>
+    Coord Unit: ${COORDINATE_UNIT_SCALE}
   `;
 
   infoPanel.style.display = 'block';
 }
 
-// ---------- hamburger ----------
+// ======================================================
+// HAMBURGER
+// ======================================================
+
 const hamburger = document.getElementById('hamburger');
 const sideMenu = document.getElementById('side-menu');
 
@@ -869,7 +921,10 @@ if (hamburger && sideMenu) {
   });
 }
 
-// ---------- search ----------
+// ======================================================
+// SEARCH
+// ======================================================
+
 const searchInput = document.getElementById('company-search');
 
 if (searchInput) {
@@ -895,18 +950,22 @@ if (searchInput) {
 
 function focusOnPlanet(planet) {
   const p = planet.position;
+  const radius = planet.userData.radius || 10;
 
   camera.position.set(
-    p.x + 80,
-    p.y + 65,
-    p.z + 120
+    p.x + Math.max(80, radius * 4),
+    p.y + Math.max(65, radius * 3),
+    p.z + Math.max(120, radius * 6)
   );
 
   controls.target.copy(p);
   controls.update();
 }
 
-// ---------- resize ----------
+// ======================================================
+// RESIZE
+// ======================================================
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -914,7 +973,10 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ---------- animation ----------
+// ======================================================
+// ANIMATION
+// ======================================================
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -925,7 +987,7 @@ function animate() {
   shootingStars.forEach((star, i) => {
     star.position.add(star.velocity);
 
-    if (star.position.length() > 520) {
+    if (star.position.length() > 4200) {
       scene.remove(star);
       shootingStars.splice(i, 1);
     }
