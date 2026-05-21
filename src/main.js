@@ -584,6 +584,16 @@ function addPlanetLabel(name, position, radius) {
 }
 
 // ---------- CSV ----------
+const SPACE_SCALE = 50;
+const SPACE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
+
+function scalePosition(x, y, z) {
+  return new THREE.Vector3(
+    SPACE_CENTER.x + (parseFloat(x) - SPACE_CENTER.x) * SPACE_SCALE,
+    SPACE_CENTER.y + (parseFloat(y) - SPACE_CENTER.y) * SPACE_SCALE,
+    SPACE_CENTER.z + (parseFloat(z) - SPACE_CENTER.z) * SPACE_SCALE
+  );
+}
 function loadPlanetsFromCSV(url) {
   fetch(url)
     .then((response) => response.text())
