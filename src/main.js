@@ -234,7 +234,7 @@ function toWorldPosition(x, y, z) {
 // ---------- scene ----------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0c2a);
-scene.fog = new THREE.Fog(new THREE.Color(0x0b0c2a), 140, 620);
+scene.fog = new THREE.Fog(new THREE.Color(0x0b0c2a), 900, 3200);
 
 const camera = new THREE.PerspectiveCamera(
   70,
@@ -242,7 +242,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   2000
 );
-camera.position.set(90, 90, 150);
+camera.position.set(650, 520, 980);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
