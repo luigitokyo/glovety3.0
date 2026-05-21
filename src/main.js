@@ -286,7 +286,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 // カメラを遠くしすぎると密集して見えるので、まずはこの距離。
-camera.position.set(520, 420, 760);
+camera.position.set(160, 120, 240);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
