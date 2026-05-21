@@ -662,23 +662,49 @@ function loadPlanetsFromCSV(url) {
     .then((response) => response.text())
     .then((data) => {
       const lines = data.split('\n').slice(1);
+      const companyPositions = [];
 
       lines.forEach((line) => {
         if (!line.trim()) return;
 
         const [name, x, y, z, gravity] = line.split(',');
+
         const rawX = parseFloat(x);
         const rawY = parseFloat(y);
         const rawZ = parseFloat(z);
         const rawGravity = parseFloat(gravity);
 
+        const position = toWorldPosition(rawX, rawY, rawZ);
+        companyPositions.push(position);
+
         createPlanet({
           name: name.trim(),
-          position: toWorldPosition(rawX, rawY, rawZ),
+          position,
           gravity: rawGravity,
           rawPosition: new THREE.Vector3(rawX, rawY, rawZ)
         });
       });
+
+      if (companyPositions.length > 0) {
+        const center = new THREE.Vector3();
+
+        companyPositions.forEach((p) => {
+          center.add(p);
+        });
+
+        center.divideScalar(companyPositions.length);
+
+        // 初期表示：企業惑星が多いエリアを見る
+        controls.target.copy(center);
+
+        camera.position.set(
+          center.x + 150,
+          center.y + 110,
+          center.z + 220
+        );
+
+        controls.update();
+      }
 
       checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
     })
@@ -688,7 +714,6 @@ function loadPlanetsFromCSV(url) {
 }
 
 loadPlanetsFromCSV('companies_002.csv');
-
 // ======================================================
 // AXIS PLANETS
 // ======================================================
@@ -984,7 +1009,7 @@ window.addEventListener('resize', () => {
 function animate() {
   requestAnimationFrame(animate);
 
-  scene.rotation.y += 0.00045;
+  scene.rotation.y += 0.00005;
 
   controls.update();
 
