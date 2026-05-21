@@ -446,7 +446,7 @@ addCustomAxes();
 // BACKGROUND STARS
 // ======================================================
 
-function addGalaxyStars(count = 20000000) {
+function addGalaxyStars(count = 2000000) {
   const geometry = new THREE.BufferGeometry();
   const positions = [];
 
