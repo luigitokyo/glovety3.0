@@ -234,12 +234,16 @@ const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 // 重力値1.0を、座標メモリ1.0に対してどれくらいの半径にするか。
 // 0.01 = 座標メモリ1.0の1%。
 // COORDINATE_UNIT_SCALE=600なら、重力1.0の半径 = 6。
-const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.01;
+const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.001;
 
 // 重力0でも最低限見えるようにする視認性補正。
-// 0.003 = 座標メモリ1.0の0.3%。
+// 0.0003 = 座標メモリ1.0の0.3%。
 // COORDINATE_UNIT_SCALE=600なら、最低半径 = 1.8。
-const PLANET_VISUAL_BASE_RADIUS_RATIO = 0.003;
+const PLANET_BASE_RADIUS_RATIO = 0.0003;
+
+// 重力値1.0あたりの半径増加
+// かなり小さめ。必要なら 0.3〜0.8 で調整
+const GRAVITY_RADIUS_WORLD_SCALE = 0.1;
 
 // 色の濃さだけを決める参照最大値。
 // 半径の上限ではない。
@@ -256,13 +260,10 @@ function toWorldPosition(x, y, z) {
 function radiusFromGravity(gravity) {
   const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
 
-  const baseRadius =
-    COORDINATE_UNIT_SCALE * PLANET_VISUAL_BASE_RADIUS_RATIO;
-
-  const gravityRadius =
-    g * COORDINATE_UNIT_SCALE * GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT;
-
-  return baseRadius + gravityRadius;
+  // 重要：
+  // ここでは COORDINATE_UNIT_SCALE を絶対に使わない。
+  // 座標スケールと惑星半径スケールを完全に分離する。
+  return PLANET_BASE_RADIUS_WORLD + g * GRAVITY_RADIUS_WORLD_SCALE;
 }
 
 function colorIntensityFromGravity(gravity) {
