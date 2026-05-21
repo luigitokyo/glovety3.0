@@ -221,6 +221,7 @@ function ensureUI() {
 // 数字を大きくすると企業惑星同士がさらに離れます。
 // まずは 24。もっと宇宙っぽく広げたい場合は 35 / 50 に上げる。
 const SPACE_SCALE = 240;
+const COORDINATE_UNIT_SCALE = 120;
 const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 
 function toWorldPosition(x, y, z) {
@@ -230,6 +231,8 @@ function toWorldPosition(x, y, z) {
     (parseFloat(z) - HNE_CENTER.z) * SPACE_SCALE
   );
 }
+
+
 
 // ---------- scene ----------
 const scene = new THREE.Scene();
@@ -613,12 +616,13 @@ function loadPlanetsFromCSV(url) {
         });
       });
 
-      checkAndAddGalaxies(24);
+      checkAndAddGalaxies(80);
     })
     .catch((error) => {
       console.error('Failed to load CSV:', error);
     });
 }
+
 
 loadPlanetsFromCSV('companies_002.csv');
 
