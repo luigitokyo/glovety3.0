@@ -15,7 +15,7 @@ const BASE_URL = import.meta.env.BASE_URL || './';
 const publicAsset = (path) => `${BASE_URL}${String(path).replace(/^\/+/, '')}`;
 
 // Ticker speed: smaller number = faster. Recommended: 24.
-const TICKER_SPEED_SECONDS = 24;
+const TICKER_SPEED_SECONDS = 40;
 
 ensureUI();
 
