@@ -228,7 +228,7 @@ function ensureUI() {
 
 // HNE座標1.0あたりの表示距離。
 // ここは「座標メモリの見た目間隔」だけを決める。
-const COORDINATE_UNIT_SCALE = 600;
+const COORDINATE_UNIT_SCALE = 300;
 
 // CSV座標の中心。
 // CSVが2.5中心の座標体系ならこのまま。
@@ -237,12 +237,12 @@ const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 // 重力値1.0を、座標メモリ1.0に対してどれくらいの半径にするか。
 // 0.001 = 座標メモリ1.0の0.1%
 // COORDINATE_UNIT_SCALE=600なら、重力1.0の半径増加 = 0.6
-const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.001;
+const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.01;
 
 // 重力0でも最低限見えるようにする視認性補正。
 // 0.0003 = 座標メモリ1.0の0.03%
 // COORDINATE_UNIT_SCALE=600なら、最低半径 = 0.18
-const PLANET_BASE_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.0001;
+const PLANET_BASE_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.001;
 
 // 色の濃さだけを決める参照最大値。
 // 半径の上限ではない。
