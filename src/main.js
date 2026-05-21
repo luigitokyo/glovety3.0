@@ -14,6 +14,9 @@ import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 const BASE_URL = import.meta.env.BASE_URL || './';
 const publicAsset = (path) => `${BASE_URL}${String(path).replace(/^\/+/, '')}`;
 
+// Ticker speed: smaller number = faster. Recommended: 24.
+const TICKER_SPEED_SECONDS = 24;
+
 ensureUI();
 
 function ensureUI() {
@@ -40,7 +43,7 @@ function ensureUI() {
       #side-menu .menu-title { color: #fff; font-weight: 700; margin-bottom: 14px; }
       #side-menu a { display: block; color: rgba(230,246,255,.82); text-decoration: none; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.06); font-size: 14px; }
       #side-menu a:hover { color: #fff; }
-      #infoPanel { position: absolute; bottom: 74px; right: 24px; background: rgba(0,0,0,.68); color: white; font-family: sans-serif; padding: 16px; border-radius: 2px; display: none; min-width: 300px; max-width: 410px; z-index: 32; border: 1px solid rgba(180,220,255,.2); backdrop-filter: blur(14px); line-height: 1.55; box-shadow: 0 0 42px rgba(80,160,255,.2); }
+      #infoPanel { position: absolute; bottom: 74px; left: 24px; right: auto; background: rgba(0,0,0,.68); color: white; font-family: sans-serif; padding: 16px; border-radius: 2px; display: none; min-width: 300px; max-width: 410px; z-index: 32; border: 1px solid rgba(180,220,255,.2); backdrop-filter: blur(14px); line-height: 1.55; box-shadow: 0 0 42px rgba(80,160,255,.2); }
       .company-detail-title { font-size: 18px; font-weight: 850; letter-spacing: .02em; margin-bottom: 4px; }
 .company-detail-subtitle { color: rgba(230,246,255,.68); font-size: 12px; margin-bottom: 14px; }
 .company-score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 12px; }
@@ -57,12 +60,16 @@ function ensureUI() {
 .hne-bar-value { text-align: right; color: rgba(230,246,255,.72); font-variant-numeric: tabular-nums; }
 .company-interpretation { margin-top: 10px; padding: 12px; border-radius: 2px; background: rgba(255,255,255,.07); color: rgba(236,248,255,.86); font-size: 12px; line-height: 1.55; }
 .company-meta { margin-top: 10px; color: rgba(230,246,255,.52); font-size: 11px; }
+.info-panel-close { position: absolute; top: 8px; right: 10px; width: 24px; height: 24px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.12); color: rgba(255,255,255,.86); cursor: pointer; font-size: 16px; line-height: 20px; border-radius: 1px; }
+.info-panel-close:hover { background: rgba(255,255,255,.24); color: #fff; }
+.compare-clear-button { margin-top: 12px; width: 100%; height: 34px; border: 1px solid rgba(255,255,255,.32); background: rgba(255,255,255,.12); color: rgba(255,255,255,.92); cursor: pointer; border-radius: 1px; font-weight: 800; }
+.compare-clear-button:hover { background: rgba(255,255,255,.22); }
 
 /* Bottom ticker */
 #gravity-ticker { position: absolute; left: 24px; right: 24px; bottom: 18px; height: 40px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 31; }
 #gravity-ticker-label { flex: 0 0 auto; height: 30px; padding: 0 12px; border-radius: 2px; display: flex; align-items: center; background: rgba(255,255,255,.78); color: #101827; font-size: 11px; font-weight: 900; letter-spacing: .08em; border: 1px solid rgba(255,255,255,.6); box-shadow: 0 0 24px rgba(120,190,255,.16); }
 #gravity-ticker-window { flex: 1; height: 34px; overflow: hidden; border-radius: 2px; border: 1px solid rgba(255,255,255,.58); background: rgba(255,255,255,.72); backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.16); }
-#gravity-ticker-track { height: 34px; display: flex; align-items: center; width: max-content; white-space: nowrap; will-change: transform; animation: tickerMoveContinuous 56s linear infinite; }
+#gravity-ticker-track { height: 34px; display: flex; align-items: center; width: max-content; white-space: nowrap; will-change: transform; animation: tickerMoveContinuous ${TICKER_SPEED_SECONDS}s linear infinite; }
 .ticker-item { flex: 0 0 auto; padding: 0 30px; color: rgba(10,18,32,.92); font-size: 13px; line-height: 34px; font-weight: 650; letter-spacing: .01em; }
 .ticker-separator { color: rgba(30,64,120,.6); margin-left: 6px; }
 @keyframes tickerMoveContinuous { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -238,6 +245,38 @@ let gravityTickerTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
 let cameraTween = null;
 const infoPanel = document.getElementById('infoPanel');
+
+if (infoPanel) {
+  infoPanel.addEventListener('click', (event) => {
+    if (event.target.closest('.info-panel-close')) {
+      infoPanel.style.display = 'none';
+      return;
+    }
+
+    if (event.target.closest('#clear-compare-button')) {
+      clearCompareVisual();
+
+      const miniResult = document.getElementById('compare-result-mini');
+      if (miniResult) {
+        miniResult.style.display = 'none';
+        miniResult.innerHTML = '';
+      }
+
+      infoPanel.style.display = 'none';
+    }
+  });
+}
+
+function setInfoPanelContent(html) {
+  if (!infoPanel) return;
+
+  infoPanel.innerHTML = `
+    <button class="info-panel-close" type="button" aria-label="Close">×</button>
+    ${html}
+  `;
+
+  infoPanel.style.display = 'block';
+}
 
 function saveInitialView() {
   initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
@@ -546,7 +585,7 @@ function startGravityTicker() {
   // We only refresh the content occasionally, so it never stops after one pass.
   gravityTickerTimer = setInterval(() => {
     updateGravityTickerMessage();
-  }, 56000);
+  }, TICKER_SPEED_SECONDS * 1000);
 }
 
 function updateGravityTickerMessage() {
@@ -569,7 +608,7 @@ function updateGravityTickerMessage() {
 
   track.style.animation = 'none';
   void track.offsetWidth;
-  track.style.animation = 'tickerMoveContinuous 56s linear infinite';
+  track.style.animation = `tickerMoveContinuous ${TICKER_SPEED_SECONDS}s linear infinite`;
 }
 
 function escapeHTML(value) {
@@ -740,7 +779,7 @@ function showCompanyInfo(planet) {
   const { name, gravity, rawPosition, radius, type } = planet.userData;
 
   if (!rawPosition) {
-    infoPanel.innerHTML = `
+    setInfoPanelContent(`
       <div class="company-detail-title">${name}</div>
       <div class="company-detail-subtitle">Glovety object</div>
       <div class="company-score-row">
@@ -749,8 +788,7 @@ function showCompanyInfo(planet) {
         </div>
         <div class="company-score-value">${gravity.toFixed(3)}</div>
       </div>
-    `;
-    infoPanel.style.display = 'block';
+    `);
     return;
   }
 
@@ -762,7 +800,7 @@ function showCompanyInfo(planet) {
   const gravityClass = getGravityClass(gravity);
   const interpretation = buildCompanyInterpretation(name, h, n, e, gravity, dominantAxis, gravityClass);
 
-  infoPanel.innerHTML = `
+  setInfoPanelContent(`
     <div class="company-detail-title">${name}</div>
     <div class="company-detail-subtitle">${type || 'company'} / HNE semantic position</div>
 
@@ -788,9 +826,7 @@ function showCompanyInfo(planet) {
       HNE: (${h.toFixed(3)}, ${n.toFixed(3)}, ${e.toFixed(3)}) /
       Visual radius: ${radius.toFixed(3)}
     </div>
-  `;
-
-  infoPanel.style.display = 'block';
+  `);
 }
 function normalizeHNEValue(value) {
   // 今の座標系はだいたい 0〜8 くらいまで出る前提。
@@ -900,15 +936,12 @@ function setupNavigationButtons() {
       const target = GRSS_WORLD_POSITION.clone();
       const cameraPosition = target.clone().add(new THREE.Vector3(COORDINATE_UNIT_SCALE * 0.35, COORDINATE_UNIT_SCALE * 0.25, COORDINATE_UNIT_SCALE * 0.45));
       moveCameraTo(cameraPosition, target, 1200);
-      if (infoPanel) {
-        infoPanel.innerHTML = `
-          <strong>GRSS Observation Point</strong><br>
-          General RSS Cloud Center<br><br>
-          HNE: (${GRSS_RAW_POSITION.x.toFixed(3)}, ${GRSS_RAW_POSITION.z.toFixed(3)}, ${GRSS_RAW_POSITION.y.toFixed(3)})<br>
-          This point represents the general observation center in the semantic space.
-        `;
-        infoPanel.style.display = 'block';
-      }
+      setInfoPanelContent(`
+        <strong>GRSS Observation Point</strong><br>
+        General RSS Cloud Center<br><br>
+        HNE: (${GRSS_RAW_POSITION.x.toFixed(3)}, ${GRSS_RAW_POSITION.z.toFixed(3)}, ${GRSS_RAW_POSITION.y.toFixed(3)})<br>
+        This point represents the general observation center in the semantic space.
+      `);
     });
   }
 
@@ -1053,7 +1086,8 @@ function runCompare() {
 
 function showCompareInfo({ planetA, planetB, hneDistance, worldDistance, gravityDiff, humanDiff, natureDiff, economicDiff }) {
   if (!infoPanel) return;
-  infoPanel.innerHTML = `
+
+  setInfoPanelContent(`
     <strong>Company Comparison</strong><br>
     ${planetA.userData.name} × ${planetB.userData.name}<br><br>
     Distance in HNE Space: ${hneDistance.toFixed(3)}<br>
@@ -1063,9 +1097,12 @@ function showCompareInfo({ planetA, planetB, hneDistance, worldDistance, gravity
     Nature Difference: ${natureDiff.toFixed(3)}<br>
     Economic Difference: ${economicDiff.toFixed(3)}<br><br>
     ${planetA.userData.name}: g=${planetA.userData.gravity.toFixed(2)}<br>
-    ${planetB.userData.name}: g=${planetB.userData.gravity.toFixed(2)}
-  `;
-  infoPanel.style.display = 'block';
+    ${planetB.userData.name}: g=${planetB.userData.gravity.toFixed(2)}<br><br>
+
+    <button id="clear-compare-button" type="button" class="compare-clear-button">
+      Clear Compare
+    </button>
+  `);
 }
 
 function setupComparePanel() {
