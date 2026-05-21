@@ -228,7 +228,11 @@ function ensureUI() {
 
 // HNE座標1.0あたりの表示距離。
 // ここは「座標メモリの見た目間隔」だけを決める。
-const COORDINATE_UNIT_SCALE = 450;
+const COORDINATE_UNIT_SCALE = 300;
+
+// 企業群の微小な座標差を見えるようにする可視化倍率
+const COMPANY_POSITION_EXPANSION = 8;
+
 
 // CSV座標の中心。
 // CSVが2.5中心の座標体系ならこのまま。
@@ -237,12 +241,12 @@ const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 // 重力値1.0を、座標メモリ1.0に対してどれくらいの半径にするか。
 // 0.001 = 座標メモリ1.0の0.1%
 // COORDINATE_UNIT_SCALE=600なら、重力1.0の半径増加 = 0.6
-const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.005;
+const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.0003;
 
 // 重力0でも最低限見えるようにする視認性補正。
 // 0.0003 = 座標メモリ1.0の0.03%
 // COORDINATE_UNIT_SCALE=600なら、最低半径 = 0.18
-const PLANET_BASE_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.001;
+const PLANET_BASE_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.0001;
 
 // 色の濃さだけを決める参照最大値。
 // 半径の上限ではない。
@@ -257,10 +261,12 @@ const GRAVITY_RADIUS_WORLD_SCALE =
   COORDINATE_UNIT_SCALE * GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT;
 
 function toWorldPosition(x, y, z) {
+  const visualScale = COORDINATE_UNIT_SCALE * COMPANY_POSITION_EXPANSION;
+
   return new THREE.Vector3(
-    (parseFloat(x) - HNE_CENTER.x) * COORDINATE_UNIT_SCALE,
-    (parseFloat(y) - HNE_CENTER.y) * COORDINATE_UNIT_SCALE,
-    (parseFloat(z) - HNE_CENTER.z) * COORDINATE_UNIT_SCALE
+    (parseFloat(x) - HNE_CENTER.x) * visualScale,
+    (parseFloat(y) - HNE_CENTER.y) * visualScale,
+    (parseFloat(z) - HNE_CENTER.z) * visualScale
   );
 }
 
@@ -274,6 +280,13 @@ function colorIntensityFromGravity(gravity) {
   const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
   return Math.min(g / GRAVITY_COLOR_REFERENCE_MAX, 1);
 }
+
+// 表示切替
+const SHOW_CLUSTER_GALAXIES = false;      // 企業間の銀河クラスタ表示
+const SHOW_RSS_OBSERVATION_GALAXY = true; // GRSS観測点の渦巻き表示
+
+
+
 // ======================================================
 // SCENE
 // ======================================================
@@ -290,7 +303,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 // カメラを遠くしすぎると密集して見えるので、まずはこの距離。
-camera.position.set(80, 60, 120);
+camera.position.set(20, 15, 30);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -433,12 +446,12 @@ addCustomAxes();
 // BACKGROUND STARS
 // ======================================================
 
-function addGalaxyStars(count = 7000) {
+function addGalaxyStars(count = 20000000) {
   const geometry = new THREE.BufferGeometry();
   const positions = [];
 
   for (let i = 0; i < count; i++) {
-    const r = Math.random() * 2600 + 300;
+    const r = Math.random() * 10000 + 100;
     const theta = Math.random() * 2 * Math.PI;
     const phi = Math.random() * Math.PI;
 
@@ -453,7 +466,7 @@ function addGalaxyStars(count = 7000) {
 
   const material = new THREE.PointsMaterial({
     color: 0xffffff,
-    size: 1.2,
+    size: 0.8,
     transparent: true,
     opacity: 0.82
   });
@@ -468,28 +481,200 @@ addGalaxyStars();
 // SHOOTING STARS
 // ======================================================
 
-function addShootingStar() {
-  const geometry = new THREE.SphereGeometry(1.2, 8, 8);
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const star = new THREE.Mesh(geometry, material);
+// ======================================================
+// SHOOTING STARS
+// ======================================================
 
-  star.position.set(
-    Math.random() * 3000 - 1500,
-    Math.random() * 1600 - 400,
-    Math.random() * 3000 - 1500
-  );
+const SHOOTING_STAR_COLOR = {
+  core: 'rgba(255,255,255,1)',
+  glow: 'rgba(120,220,255,0.95)',
+  tail: 'rgba(90,190,255,0.85)'
+};
 
-  star.velocity = new THREE.Vector3(
-    Math.random() * -4.0 - 1.0,
-    Math.random() * -3.0 - 0.8,
-    Math.random() * -3.5 - 0.8
-  );
+function createShootingStarHeadTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
 
-  shootingStars.push(star);
-  scene.add(star);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+
+  // outer glow
+  const glow = ctx.createRadialGradient(64, 64, 0, 64, 64, 58);
+  glow.addColorStop(0.0, 'rgba(255,255,255,1)');
+  glow.addColorStop(0.25, SHOOTING_STAR_COLOR.glow);
+  glow.addColorStop(0.65, 'rgba(80,160,255,0.22)');
+  glow.addColorStop(1.0, 'rgba(80,160,255,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(64, 64, 58, 0, Math.PI * 2);
+  ctx.fill();
+
+  // sharp diamond star
+  ctx.save();
+  ctx.translate(64, 64);
+  ctx.rotate(Math.PI / 4);
+
+  const starGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, 28);
+  starGradient.addColorStop(0.0, 'rgba(255,255,255,1)');
+  starGradient.addColorStop(0.45, 'rgba(190,240,255,0.95)');
+  starGradient.addColorStop(1.0, 'rgba(80,180,255,0)');
+
+  ctx.fillStyle = starGradient;
+  ctx.beginPath();
+  ctx.moveTo(0, -34);
+  ctx.lineTo(8, -8);
+  ctx.lineTo(34, 0);
+  ctx.lineTo(8, 8);
+  ctx.lineTo(0, 34);
+  ctx.lineTo(-8, 8);
+  ctx.lineTo(-34, 0);
+  ctx.lineTo(-8, -8);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
 }
 
-setInterval(addShootingStar, 3200);
+function createShootingStarTailTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 96;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // horizontal luminous tail, head on right side
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  gradient.addColorStop(0.0, 'rgba(80,180,255,0)');
+  gradient.addColorStop(0.25, 'rgba(80,180,255,0.10)');
+  gradient.addColorStop(0.65, SHOOTING_STAR_COLOR.tail);
+  gradient.addColorStop(0.92, 'rgba(255,255,255,0.95)');
+  gradient.addColorStop(1.0, 'rgba(255,255,255,0)');
+
+  ctx.fillStyle = gradient;
+
+  // tapered comet shape
+  ctx.beginPath();
+  ctx.moveTo(0, 48);
+  ctx.bezierCurveTo(140, 18, 360, 20, 512, 44);
+  ctx.bezierCurveTo(360, 76, 140, 78, 0, 48);
+  ctx.closePath();
+  ctx.fill();
+
+  // inner white streak
+  const inner = ctx.createLinearGradient(120, 0, 512, 0);
+  inner.addColorStop(0.0, 'rgba(255,255,255,0)');
+  inner.addColorStop(0.7, 'rgba(255,255,255,0.55)');
+  inner.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = inner;
+  ctx.beginPath();
+  ctx.moveTo(90, 48);
+  ctx.bezierCurveTo(230, 40, 390, 41, 512, 47);
+  ctx.bezierCurveTo(390, 55, 230, 56, 90, 48);
+  ctx.closePath();
+  ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+const shootingStarHeadTexture = createShootingStarHeadTexture();
+const shootingStarTailTexture = createShootingStarTailTexture();
+
+function addShootingStar() {
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+  // カメラ前方、つまり画面内に出す
+  // 近く〜遠くにランダム発生
+const depth = 140 + Math.random() * 900;
+
+// 近いほど大きく、遠いほど小さくする係数
+const depthScale = THREE.MathUtils.clamp(420 / depth, 0.35, 1.6);
+
+const spawnCenter = camera.position
+  .clone()
+  .add(forward.clone().multiplyScalar(depth));
+
+const startPosition = spawnCenter
+  .clone()
+  .add(right.clone().multiplyScalar((Math.random() * 360 - 180) * depthScale))
+  .add(up.clone().multiplyScalar((Math.random() * 180 + 40) * depthScale));  // 右上から左下 or 左上から右下に流す
+  const side = Math.random() < 0.5 ? -1 : 1;
+
+  const moveDir = right
+    .clone()
+    .multiplyScalar(side)
+    .add(up.clone().multiplyScalar(-0.55))
+    .normalize();
+
+  const speed = 10 + Math.random() * 8;
+  const velocity = moveDir.clone().multiplyScalar(speed);
+
+  const group = new THREE.Group();
+  group.position.copy(startPosition);
+
+  // 既存animate互換
+  group.velocity = velocity;
+  group.userData.velocity = velocity;
+
+  // 角度計算：カメラ平面上で尾の向きを合わせる
+  const angle = Math.atan2(moveDir.dot(up), moveDir.dot(right));
+
+  const tailLength = (120 + Math.random() * 100) * depthScale;
+  const tailHeight = (1 + Math.random() * 0.5) * depthScale;
+
+  const tailMaterial = new THREE.SpriteMaterial({
+    map: shootingStarTailTexture,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    rotation: angle
+  });
+
+  const tail = new THREE.Sprite(tailMaterial);
+  tail.scale.set(tailLength, tailHeight, 1);
+  tail.position.copy(moveDir.clone().multiplyScalar(-tailLength * 0.42));
+  group.add(tail);
+
+  const headMaterial = new THREE.SpriteMaterial({
+    map: shootingStarHeadTexture,
+    transparent: true,
+    opacity: 1.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    rotation: angle
+  });
+
+  const head = new THREE.Sprite(headMaterial);
+  head.scale.set(18, 18, 1);
+  head.position.set(0, 0, 0);
+  group.add(head);
+
+  shootingStars.push(group);
+  scene.add(group);
+}
+
+setInterval(() => {
+  addShootingStar();
+
+  // たまに2本流す
+  if (Math.random() < 0.25) {
+    addShootingStar();
+  }
+}, 18900);
+
+setInterval(addShootingStar, 9800);
 
 // ======================================================
 // SUPERNOVA
@@ -646,12 +831,53 @@ function addPlanetLabel(name, position, radius) {
 
   // ラベルは惑星半径と完全連動させすぎない。
   // 巨大惑星でもラベルが巨大化しないよう控えめにする。
-  const labelWidth = Math.max(38, Math.min(90, radius * 2.2));
-  sprite.scale.set(labelWidth, labelWidth * 0.45, 1);
+  const labelWidth = Math.max(16, Math.min(45, radius * 1.1));
+  sprite.scale.set(labelWidth, labelWidth * 0.45, 0.5);
 
-  sprite.position.copy(position).add(new THREE.Vector3(0, radius + 12, 0));
+  sprite.position.copy(position).add(new THREE.Vector3(0, radius + 2, 0));
   scene.add(sprite);
 }
+
+
+function findDensestCompanyArea(positions) {
+  // 密集地帯を判定する半径。
+  // COMPANY_POSITION_EXPANSION を使っているので、少し大きめにする。
+  const DENSE_RADIUS = COORDINATE_UNIT_SCALE * 0.35;
+
+  let bestNeighbors = [];
+  let bestPosition = positions[0];
+
+  positions.forEach((candidate) => {
+    const neighbors = positions.filter((p) => {
+      return candidate.distanceTo(p) <= DENSE_RADIUS;
+    });
+
+    if (neighbors.length > bestNeighbors.length) {
+      bestNeighbors = neighbors;
+      bestPosition = candidate;
+    }
+  });
+
+  if (bestNeighbors.length === 0) {
+    return bestPosition.clone();
+  }
+
+  const denseCenter = new THREE.Vector3();
+
+  bestNeighbors.forEach((p) => {
+    denseCenter.add(p);
+  });
+
+  denseCenter.divideScalar(bestNeighbors.length);
+
+  return denseCenter;
+}
+
+
+
+
+
+
 
 // ======================================================
 // CSV
@@ -686,27 +912,23 @@ function loadPlanetsFromCSV(url) {
       });
 
       if (companyPositions.length > 0) {
-        const center = new THREE.Vector3();
+        const denseCenter = findDensestCompanyArea(companyPositions);
 
-        companyPositions.forEach((p) => {
-          center.add(p);
-        });
-
-        center.divideScalar(companyPositions.length);
-
-        // 初期表示：企業惑星が多いエリアを見る
-        controls.target.copy(center);
+        // 初期表示：平均点ではなく、企業惑星が最も密集しているエリアを見る
+        controls.target.copy(denseCenter);
 
         camera.position.set(
-          center.x + 150,
-          center.y + 110,
-          center.z + 220
+          denseCenter.x + 35,
+          denseCenter.y + 25,
+          denseCenter.z + 55
         );
 
         controls.update();
       }
 
-      checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
+      if (SHOW_CLUSTER_GALAXIES) {
+        checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
+      }
     })
     .catch((error) => {
       console.error('Failed to load CSV:', error);
@@ -714,6 +936,7 @@ function loadPlanetsFromCSV(url) {
 }
 
 loadPlanetsFromCSV('companies_002.csv');
+
 // ======================================================
 // AXIS PLANETS
 // ======================================================
@@ -880,7 +1103,9 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
   });
 }
 
-addSpiralRSSGalaxy(toWorldPosition(5.602, 2.28, 2.812));
+if (SHOW_RSS_OBSERVATION_GALAXY) {
+  addSpiralRSSGalaxy(toWorldPosition(5.602, 2.28, 2.812));
+}
 
 // ======================================================
 // CLICK INFO
@@ -982,9 +1207,9 @@ function focusOnPlanet(planet) {
   const radius = planet.userData.radius || 10;
 
   camera.position.set(
-    p.x + Math.max(80, radius * 4),
-    p.y + Math.max(65, radius * 3),
-    p.z + Math.max(120, radius * 6)
+    p.x + Math.max(20, radius * 2),
+    p.y + Math.max(30, radius * 1.5),
+    p.z + Math.max(50, radius * 3)
   );
 
   controls.target.copy(p);
@@ -1009,18 +1234,26 @@ window.addEventListener('resize', () => {
 function animate() {
   requestAnimationFrame(animate);
 
-  scene.rotation.y += 0.00005;
+  scene.rotation.y += 0.000005;
 
   controls.update();
 
-  shootingStars.forEach((star, i) => {
-    star.position.add(star.velocity);
-
-    if (star.position.length() > 4200) {
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    const star = shootingStars[i];
+  
+    star.position.add(star.userData.velocity);
+    star.userData.life += 1;
+  
+    if (star.userData.trailMaterial) {
+      const progress = star.userData.life / star.userData.maxLife;
+      star.userData.trailMaterial.opacity = Math.max(0, 0.9 * (1 - progress));
+    }
+  
+    if (star.userData.life > star.userData.maxLife) {
       scene.remove(star);
       shootingStars.splice(i, 1);
     }
-  });
+  }
 
   animateCallbacks.forEach((fn) => fn());
 
