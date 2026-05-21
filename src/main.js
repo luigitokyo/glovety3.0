@@ -17,11 +17,10 @@ const publicAsset = (path) => `${BASE_URL}${String(path).replace(/^\/+/, '')}`;
 ensureUI();
 
 function ensureUI() {
-   // StackBlitz / HMR 対策：古いUIを必ず消してから再生成する
+  // StackBlitz / HMR 対策：古いUIを必ず消してから再生成する
   document.getElementById('glovety-ui-style')?.remove();
   document.getElementById('ui-layer')?.remove();
   document.getElementById('infoPanel')?.remove();
-
   if (!document.getElementById('glovety-ui-style')) {
     const style = document.createElement('style');
     style.id = 'glovety-ui-style';
@@ -30,38 +29,63 @@ function ensureUI() {
       canvas { display: block; }
       #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
       #top-left { position: absolute; top: 24px; left: 24px; display: flex; align-items: center; gap: 16px; pointer-events: auto; }
-      #hamburger { width: 42px; height: 42px; border-radius: 12px; border: 1px solid rgba(180,220,255,.25); background: rgba(6,12,24,.72); color: #eaf6ff; display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer; backdrop-filter: blur(14px); box-shadow: 0 0 24px rgba(80,160,255,.18); }
+      #hamburger { width: 42px; height: 42px; border-radius: 2px; border: 1px solid rgba(180,220,255,.25); background: rgba(6,12,24,.72); color: #eaf6ff; display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer; backdrop-filter: blur(14px); box-shadow: 0 0 24px rgba(80,160,255,.18); }
       #logo { height: 48px; display: flex; align-items: center; }
       .glovety-logo-img { height: 48px; width: auto; max-width: 220px; display: block; object-fit: contain; filter: drop-shadow(0 0 18px rgba(120,190,255,.35)); }
       #search-box { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 220px)); pointer-events: auto; }
-      #company-search { width: 100%; height: 44px; border-radius: 999px; border: 1px solid rgba(180,220,255,.25); background: rgba(6,12,24,.72); color: #f4fbff; padding: 0 20px; outline: none; font-size: 14px; backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.16); }
+      #company-search { width: 100%; height: 44px; border-radius: 2px; border: 1px solid rgba(180,220,255,.25); background: rgba(6,12,24,.72); color: #f4fbff; padding: 0 20px; outline: none; font-size: 14px; backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.16); }
       #company-search::placeholder { color: rgba(220,240,255,.5); }
-      #side-menu { position: absolute; top: 82px; left: 24px; width: 240px; padding: 18px; border-radius: 18px; border: 1px solid rgba(180,220,255,.2); background: rgba(6,12,24,.86); backdrop-filter: blur(18px); box-shadow: 0 0 36px rgba(80,160,255,.18); display: none; pointer-events: auto; }
+      #side-menu { position: absolute; top: 82px; left: 24px; width: 240px; padding: 18px; border-radius: 2px; border: 1px solid rgba(180,220,255,.2); background: rgba(6,12,24,.86); backdrop-filter: blur(18px); box-shadow: 0 0 36px rgba(80,160,255,.18); display: none; pointer-events: auto; }
       #side-menu.open { display: block; }
       #side-menu .menu-title { color: #fff; font-weight: 700; margin-bottom: 14px; }
       #side-menu a { display: block; color: rgba(230,246,255,.82); text-decoration: none; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.06); font-size: 14px; }
       #side-menu a:hover { color: #fff; }
-      #infoPanel { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,.62); color: white; font-family: sans-serif; padding: 14px; border-radius: 14px; display: none; min-width: 280px; max-width: 390px; z-index: 20; border: 1px solid rgba(180,220,255,.18); backdrop-filter: blur(12px); line-height: 1.55; box-shadow: 0 0 36px rgba(80,160,255,.18); }
+      #infoPanel { position: absolute; bottom: 74px; right: 24px; background: rgba(0,0,0,.68); color: white; font-family: sans-serif; padding: 16px; border-radius: 2px; display: none; min-width: 300px; max-width: 410px; z-index: 32; border: 1px solid rgba(180,220,255,.2); backdrop-filter: blur(14px); line-height: 1.55; box-shadow: 0 0 42px rgba(80,160,255,.2); }
+      .company-detail-title { font-size: 18px; font-weight: 850; letter-spacing: .02em; margin-bottom: 4px; }
+.company-detail-subtitle { color: rgba(230,246,255,.68); font-size: 12px; margin-bottom: 14px; }
+.company-score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 12px; }
+.company-score-label { color: rgba(230,246,255,.72); font-size: 12px; }
+.company-score-value { font-size: 26px; font-weight: 900; color: #ffffff; text-shadow: 0 0 18px rgba(120,220,255,.62); }
+.hne-bars { display: flex; flex-direction: column; gap: 9px; margin: 12px 0 14px; }
+.hne-bar-row { display: grid; grid-template-columns: 72px 1fr 52px; align-items: center; gap: 9px; font-size: 12px; }
+.hne-bar-label { color: rgba(230,246,255,.76); font-weight: 700; }
+.hne-bar-track { height: 8px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; box-shadow: inset 0 0 8px rgba(0,0,0,.26); }
+.hne-bar-fill { height: 100%; border-radius: 2px; box-shadow: 0 0 14px rgba(120,220,255,.44); }
+.hne-human { background: linear-gradient(90deg, rgba(93,169,255,.55), rgba(93,169,255,1)); }
+.hne-nature { background: linear-gradient(90deg, rgba(100,255,155,.5), rgba(100,255,155,1)); }
+.hne-economic { background: linear-gradient(90deg, rgba(255,141,107,.5), rgba(255,141,107,1)); }
+.hne-bar-value { text-align: right; color: rgba(230,246,255,.72); font-variant-numeric: tabular-nums; }
+.company-interpretation { margin-top: 10px; padding: 12px; border-radius: 2px; background: rgba(255,255,255,.07); color: rgba(236,248,255,.86); font-size: 12px; line-height: 1.55; }
+.company-meta { margin-top: 10px; color: rgba(230,246,255,.52); font-size: 11px; }
+
+/* Bottom ticker */
+#gravity-ticker { position: absolute; left: 24px; right: 24px; bottom: 18px; height: 40px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 31; }
+#gravity-ticker-label { flex: 0 0 auto; height: 30px; padding: 0 12px; border-radius: 2px; display: flex; align-items: center; background: rgba(255,255,255,.78); color: #101827; font-size: 11px; font-weight: 900; letter-spacing: .08em; border: 1px solid rgba(255,255,255,.6); box-shadow: 0 0 24px rgba(120,190,255,.16); }
+#gravity-ticker-window { flex: 1; height: 34px; overflow: hidden; border-radius: 2px; border: 1px solid rgba(255,255,255,.58); background: rgba(255,255,255,.72); backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.16); }
+#gravity-ticker-track { height: 34px; display: flex; align-items: center; width: max-content; white-space: nowrap; will-change: transform; animation: tickerMoveContinuous 56s linear infinite; }
+.ticker-item { flex: 0 0 auto; padding: 0 30px; color: rgba(10,18,32,.92); font-size: 13px; line-height: 34px; font-weight: 650; letter-spacing: .01em; }
+.ticker-separator { color: rgba(30,64,120,.6); margin-left: 6px; }
+@keyframes tickerMoveContinuous { from { transform: translateX(0); } to { transform: translateX(-50%); } }
       #infoPanel strong { font-size: 16px; }
 
       #top-right-controls { position: absolute; top: 24px; right: 24px; display: flex; gap: 10px; pointer-events: auto; z-index: 30; }
-      .observatory-icon-button { width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16); color: #fff; font-size: 20px; cursor: pointer; backdrop-filter: blur(16px); box-shadow: 0 0 24px rgba(120,190,255,.22); transition: transform .2s ease, background .2s ease, box-shadow .2s ease; }
+      .observatory-icon-button { width: 44px; height: 44px; border-radius: 2px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16); color: #fff; font-size: 20px; cursor: pointer; backdrop-filter: blur(16px); box-shadow: 0 0 24px rgba(120,190,255,.22); transition: transform .2s ease, background .2s ease, box-shadow .2s ease; }
       .observatory-icon-button:hover { transform: translateY(-1px) scale(1.04); background: rgba(255,255,255,.26); box-shadow: 0 0 34px rgba(120,190,255,.36); }
 
-      #ranking-panel { position: absolute; top: 84px; right: 24px; width: 286px; padding: 16px; border-radius: 20px; background: rgba(255,255,255,.78); color: #101827; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 18px 60px rgba(0,0,0,.28); backdrop-filter: blur(18px); pointer-events: auto; z-index: 25; }
-      #control-panel { position: absolute; top: 470px; right: 24px; width: 286px; padding: 16px; border-radius: 20px; background: rgba(255,255,255,.76); color: #101827; border: 1px solid rgba(255,255,255,.65); box-shadow: 0 18px 60px rgba(0,0,0,.26); backdrop-filter: blur(18px); pointer-events: auto; z-index: 24; }
+      #ranking-panel { position: absolute; top: 84px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.78); color: #101827; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 18px 60px rgba(0,0,0,.28); backdrop-filter: blur(18px); pointer-events: auto; z-index: 25; }
+      #control-panel { position: absolute; top: 470px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.76); color: #101827; border: 1px solid rgba(255,255,255,.65); box-shadow: 0 18px 60px rgba(0,0,0,.26); backdrop-filter: blur(18px); pointer-events: auto; z-index: 24; }
       .panel-title { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; color: rgba(12,20,38,.78); }
       #ranking-list { display: flex; flex-direction: column; gap: 6px; }
-      .ranking-row { width: 100%; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; border: 0; border-radius: 12px; padding: 8px 10px; background: rgba(255,255,255,.58); color: #101827; cursor: pointer; text-align: left; transition: background .2s ease, transform .2s ease; }
+      .ranking-row { width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; border: 0; border-radius: 2px; padding: 8px 10px; background: rgba(255,255,255,.58); color: #101827; cursor: pointer; text-align: left; transition: background .2s ease, transform .2s ease; }
       .ranking-row:hover { background: rgba(230,244,255,.95); transform: translateX(-2px); }
       .ranking-index { font-weight: 800; color: rgba(30,64,120,.9); }
       .ranking-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 13px; }
       .ranking-score { font-variant-numeric: tabular-nums; font-size: 12px; color: rgba(20,30,50,.72); }
-      .compare-input { width: 100%; height: 38px; box-sizing: border-box; border-radius: 12px; border: 1px solid rgba(30,60,100,.18); background: rgba(255,255,255,.72); color: #101827; padding: 0 12px; outline: none; margin-bottom: 8px; font-size: 13px; }
+      .compare-input { width: 100%; height: 38px; box-sizing: border-box; border-radius: 2px; border: 1px solid rgba(30,60,100,.18); background: rgba(255,255,255,.72); color: #101827; padding: 0 12px; outline: none; margin-bottom: 8px; font-size: 13px; }
       .compare-input::placeholder { color: rgba(16,24,39,.45); }
-      #compare-button { width: 100%; height: 40px; border-radius: 14px; border: 0; background: linear-gradient(135deg, #173b68, #3277c6); color: white; font-weight: 800; cursor: pointer; box-shadow: 0 10px 26px rgba(40,110,190,.3); margin-top: 4px; }
+      #compare-button { width: 100%; height: 40px; border-radius: 2px; border: 0; background: linear-gradient(135deg, #173b68, #3277c6); color: white; font-weight: 800; cursor: pointer; box-shadow: 0 10px 26px rgba(40,110,190,.3); margin-top: 4px; }
       #compare-button:hover { filter: brightness(1.08); }
-      #compare-result-mini { margin-top: 12px; padding: 12px; border-radius: 14px; background: rgba(7,16,30,.06); font-size: 12px; line-height: 1.55; color: rgba(16,24,39,.78); display: none; }
+      #compare-result-mini { margin-top: 12px; padding: 12px; border-radius: 2px; background: rgba(7,16,30,.06); font-size: 12px; line-height: 1.55; color: rgba(16,24,39,.78); display: none; }
       .compare-mini-title { font-weight: 800; color: #101827; margin-bottom: 6px; }
       .compare-note { font-size: 11px; margin-top: 8px; color: rgba(16,24,39,.54); }
 
@@ -73,7 +97,10 @@ function ensureUI() {
         #ranking-panel { display: none; }
         #control-panel { left: 16px; right: 16px; bottom: 18px; top: auto; width: auto; }
         #top-right-controls { top: 16px; right: 16px; }
-        #infoPanel { right: 16px; left: 16px; bottom: 190px; min-width: 0; max-width: none; }
+        #infoPanel { right: 16px; left: 16px; bottom: 76px; min-width: 0; max-width: none; }
+        #gravity-ticker { left: 12px; right: 12px; bottom: 12px; }
+        #gravity-ticker-label { display: none; }
+        .ticker-item { font-size: 12px; }
       }
     `;
     document.head.appendChild(style);
@@ -115,6 +142,15 @@ function ensureUI() {
         <a href="#">Theory</a>
         <a href="https://note.com/" target="_blank">note</a>
         <a href="#">Contact</a>
+      </div>
+      <div id="gravity-ticker">
+        <div id="gravity-ticker-label">OBSERVATORY FEED</div>
+        <div id="gravity-ticker-window">
+          <div id="gravity-ticker-track">
+            <span class="ticker-item">Initializing Glovety Observatory...</span>
+            <span class="ticker-item">Loading semantic gravity field...</span>
+          </div>
+        </div>
       </div>
     `;
     document.body.appendChild(ui);
@@ -198,6 +234,7 @@ const compareGroup = new THREE.Group();
 scene.add(compareGroup);
 
 let activeCompareVisual = null;
+let gravityTickerTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
 let cameraTween = null;
 const infoPanel = document.getElementById('infoPanel');
@@ -491,10 +528,123 @@ function loadPlanetsFromCSV(url) {
         saveInitialView();
       }
       renderRankingPanel();
+      startGravityTicker();
       if (SHOW_CLUSTER_GALAXIES) checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
     })
     .catch((error) => console.error('Failed to load CSV:', error));
 }
+
+function startGravityTicker() {
+  if (gravityTickerTimer) {
+    clearInterval(gravityTickerTimer);
+    gravityTickerTimer = null;
+  }
+
+  updateGravityTickerMessage();
+
+  // The ticker itself is a continuous CSS marquee.
+  // We only refresh the content occasionally, so it never stops after one pass.
+  gravityTickerTimer = setInterval(() => {
+    updateGravityTickerMessage();
+  }, 56000);
+}
+
+function updateGravityTickerMessage() {
+  const track = document.getElementById('gravity-ticker-track');
+  if (!track || companyPlanetMeshes.length === 0) return;
+
+  const messages = [];
+
+  for (let i = 0; i < 12; i++) {
+    messages.push(generateGravityMessage());
+  }
+
+  const renderMessages = (list) => list.map((message) => `
+    <span class="ticker-item">${escapeHTML(message)} <span class="ticker-separator">◆</span></span>
+  `).join('');
+
+  // Duplicate the same message sequence twice.
+  // The CSS translates exactly -50%, so the loop connects seamlessly.
+  track.innerHTML = renderMessages(messages) + renderMessages(messages);
+
+  track.style.animation = 'none';
+  void track.offsetWidth;
+  track.style.animation = 'tickerMoveContinuous 56s linear infinite';
+}
+
+function escapeHTML(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function generateGravityMessage() {
+  const company = pickRandom(companyPlanetMeshes);
+  const data = company.userData;
+  const raw = data.rawPosition;
+
+  if (!raw) {
+    return `Observation update: ${data.name} has entered the Glovety field.`;
+  }
+
+  const h = raw.x;
+  const n = raw.z;
+  const e = raw.y;
+  const g = data.gravity;
+
+  const dominant = getDominantAxis(h, n, e);
+  const gravityClass = getGravityClass(g);
+  const rank = getGravityRank(company);
+  const nearest = findNearestCompany(company);
+
+  const templates = [
+    () => `Observation update: ${data.name}'s current gravity is ${g.toFixed(3)}, classified as ${gravityClass}.`,
+    () => `HNE scan: ${data.name} is leaning toward the ${dominant.key} axis with a score of ${dominant.value.toFixed(3)}.`,
+    () => `Gravity ranking: ${data.name} is currently ranked #${rank} among observed company planets.`,
+    () => `Semantic field alert: ${data.name} shows a ${dominant.key}-dominant profile within the HNE space.`,
+    () => nearest
+      ? `Proximity signal: ${data.name} is semantically closest to ${nearest.userData.name}, with distance ${data.position.distanceTo(nearest.position).toFixed(1)} in visual space.`
+      : `Proximity signal: ${data.name} is isolated in the current observation window.`,
+    () => `Glovety feed: ${data.name} combines H=${h.toFixed(2)}, N=${n.toFixed(2)}, E=${e.toFixed(2)} with gravity ${g.toFixed(2)}.`
+  ];
+
+  return pickRandom(templates)();
+}
+
+function pickRandom(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+function getGravityRank(targetPlanet) {
+  const ranked = companyPlanetMeshes
+    .slice()
+    .sort((a, b) => b.userData.gravity - a.userData.gravity);
+
+  const index = ranked.findIndex((p) => p === targetPlanet);
+  return index >= 0 ? index + 1 : '-';
+}
+
+function findNearestCompany(targetPlanet) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+
+  companyPlanetMeshes.forEach((planet) => {
+    if (planet === targetPlanet) return;
+
+    const d = targetPlanet.position.distanceTo(planet.position);
+
+    if (d < nearestDistance) {
+      nearestDistance = d;
+      nearest = planet;
+    }
+  });
+
+  return nearest;
+}
+
 
 loadPlanetsFromCSV(publicAsset('companies_002.csv'));
 createAxisPlanets();
@@ -586,17 +736,112 @@ window.addEventListener('pointerdown', (event) => {
 
 function showCompanyInfo(planet) {
   if (!planet || !infoPanel) return;
+
   const { name, gravity, rawPosition, radius, type } = planet.userData;
-  const rawText = rawPosition ? `HNE: (${rawPosition.x.toFixed(3)}, ${rawPosition.z.toFixed(3)}, ${rawPosition.y.toFixed(3)})` : '';
+
+  if (!rawPosition) {
+    infoPanel.innerHTML = `
+      <div class="company-detail-title">${name}</div>
+      <div class="company-detail-subtitle">Glovety object</div>
+      <div class="company-score-row">
+        <div>
+          <div class="company-score-label">Gravity Score</div>
+        </div>
+        <div class="company-score-value">${gravity.toFixed(3)}</div>
+      </div>
+    `;
+    infoPanel.style.display = 'block';
+    return;
+  }
+
+  const h = rawPosition.x;
+  const n = rawPosition.z;
+  const e = rawPosition.y;
+
+  const dominantAxis = getDominantAxis(h, n, e);
+  const gravityClass = getGravityClass(gravity);
+  const interpretation = buildCompanyInterpretation(name, h, n, e, gravity, dominantAxis, gravityClass);
+
   infoPanel.innerHTML = `
-    <strong>${name}</strong><br>
-    Type: ${type || 'company'}<br>
-    Gravity Score: ${gravity.toFixed(3)}<br>
-    Visual Radius: ${radius.toFixed(3)}<br>
-    ${rawText}<br>
-    World: (${planet.position.x.toFixed(1)}, ${planet.position.y.toFixed(1)}, ${planet.position.z.toFixed(1)})
+    <div class="company-detail-title">${name}</div>
+    <div class="company-detail-subtitle">${type || 'company'} / HNE semantic position</div>
+
+    <div class="company-score-row">
+      <div>
+        <div class="company-score-label">Gravity Score</div>
+        <div class="company-detail-subtitle">${gravityClass}</div>
+      </div>
+      <div class="company-score-value">${gravity.toFixed(3)}</div>
+    </div>
+
+    <div class="hne-bars">
+      ${renderHNEBar('Human', h, 'hne-human')}
+      ${renderHNEBar('Nature', n, 'hne-nature')}
+      ${renderHNEBar('Economic', e, 'hne-economic')}
+    </div>
+
+    <div class="company-interpretation">
+      ${interpretation}
+    </div>
+
+    <div class="company-meta">
+      HNE: (${h.toFixed(3)}, ${n.toFixed(3)}, ${e.toFixed(3)}) /
+      Visual radius: ${radius.toFixed(3)}
+    </div>
   `;
+
   infoPanel.style.display = 'block';
+}
+function normalizeHNEValue(value) {
+  // 今の座標系はだいたい 0〜8 くらいまで出る前提。
+  // バー表示では 0〜8 を 0〜100% に丸める。
+  return THREE.MathUtils.clamp((Number(value) / 8) * 100, 0, 100);
+}
+
+function renderHNEBar(label, value, className) {
+  const pct = normalizeHNEValue(value);
+
+  return `
+    <div class="hne-bar-row">
+      <div class="hne-bar-label">${label}</div>
+      <div class="hne-bar-track">
+        <div class="hne-bar-fill ${className}" style="width:${pct.toFixed(1)}%"></div>
+      </div>
+      <div class="hne-bar-value">${value.toFixed(3)}</div>
+    </div>
+  `;
+}
+
+function getDominantAxis(h, n, e) {
+  const axes = [
+    { key: 'Human', value: h },
+    { key: 'Nature', value: n },
+    { key: 'Economic', value: e }
+  ];
+
+  return axes.sort((a, b) => b.value - a.value)[0];
+}
+
+function getGravityClass(gravity) {
+  if (gravity >= 6) return 'High gravity field';
+  if (gravity >= 3) return 'Medium gravity field';
+  if (gravity > 0) return 'Emerging gravity field';
+  return 'Weak or unobserved gravity field';
+}
+
+function buildCompanyInterpretation(name, h, n, e, gravity, dominantAxis, gravityClass) {
+  const secondAxis = [
+    { key: 'Human', value: h },
+    { key: 'Nature', value: n },
+    { key: 'Economic', value: e }
+  ].sort((a, b) => b.value - a.value)[1];
+
+  return `
+    ${name} is currently positioned closest to the <strong>${dominantAxis.key}</strong> axis,
+    with <strong>${secondAxis.key}</strong> as a secondary semantic component.
+    Its gravity is classified as <strong>${gravityClass}</strong>, suggesting that this company
+    exerts a ${gravity >= 3 ? 'visible' : 'limited'} pull within the observed HNE semantic space.
+  `;
 }
 
 const hamburger = document.getElementById('hamburger');
@@ -850,7 +1095,7 @@ window.addEventListener('resize', () => {
 function animate() {
   requestAnimationFrame(animate);
   const now = performance.now();
-  scene.rotation.y += 0.000005;
+  scene.rotation.y += 0.000001;
   updateCameraTween();
   updateCompareVisual(now);
   controls.update();
