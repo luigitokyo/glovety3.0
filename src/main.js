@@ -102,6 +102,8 @@ function ensureUI() {
       #top-right-controls { position: absolute; top: 24px; right: 24px; display: flex; gap: 10px; pointer-events: auto; z-index: 30; }
       .observatory-icon-button { width: 44px; height: 44px; border-radius: 2px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16); color: #fff; font-size: 20px; cursor: pointer; backdrop-filter: blur(16px); box-shadow: 0 0 24px rgba(120,190,255,.22); transition: transform .2s ease, background .2s ease, box-shadow .2s ease; }
       .observatory-icon-button:hover { transform: translateY(-1px) scale(1.04); background: rgba(255,255,255,.26); box-shadow: 0 0 34px rgba(120,190,255,.36); }
+      #telescope-button.telescope-alert { background: rgba(160,220,255,.34); border-color: rgba(180,240,255,.95); color: #ffffff; box-shadow: 0 0 18px rgba(120,220,255,.82), 0 0 42px rgba(80,160,255,.56), inset 0 0 18px rgba(255,255,255,.18); animation: telescopePulse 1.4s ease-in-out infinite; }
+      @keyframes telescopePulse { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.08); filter: brightness(1.35); } 100% { transform: scale(1); filter: brightness(1); } }
 
       #ranking-panel { position: absolute; top: 84px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.78); color: #101827; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 18px 60px rgba(0,0,0,.28); backdrop-filter: blur(18px); pointer-events: auto; z-index: 25; }
       #control-panel { position: absolute; top: 470px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.76); color: #101827; border: 1px solid rgba(255,255,255,.65); box-shadow: 0 18px 60px rgba(0,0,0,.26); backdrop-filter: blur(18px); pointer-events: auto; z-index: 24; }
@@ -151,6 +153,7 @@ function ensureUI() {
 
       <div id="top-right-controls">
         <button id="observation-button" class="observatory-icon-button" title="Go to GRSS observation point">◎</button>
+        <button id="telescope-button" class="observatory-icon-button" title="Focus latest observed company">🔭</button>
         <button id="compass-button" class="observatory-icon-button" title="Return to initial view">⌖</button>
       </div>
 
@@ -276,6 +279,7 @@ scene.add(compareGroup);
 let activeCompareVisual = null;
 let gravityTickerTimer = null;
 let attentionScanTimer = null;
+let latestObservedPlanet = null;
 let floatingCaptionTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
 let cameraTween = null;
@@ -834,6 +838,8 @@ function performAttentionScan() {
   if (candidates.length === 0) return;
 
   const planet = pickRandom(candidates);
+  markLatestObservedPlanet(planet);
+
   const signal = buildMockSignalForPlanet(planet);
 
   spawnSNSOrbitParticles(planet, signal.snsItems);
@@ -1381,8 +1387,26 @@ function renderRankingPanel(limit = 8) {
   });
 }
 
+function markLatestObservedPlanet(planet) {
+  latestObservedPlanet = planet;
+
+  const telescopeButton = document.getElementById('telescope-button');
+  if (!telescopeButton || !planet) return;
+
+  telescopeButton.classList.add('telescope-alert');
+  telescopeButton.title = `Focus latest observed company: ${planet.userData.name}`;
+}
+
+function clearTelescopeAlert() {
+  const telescopeButton = document.getElementById('telescope-button');
+  if (!telescopeButton) return;
+
+  telescopeButton.classList.remove('telescope-alert');
+}
+
 function setupNavigationButtons() {
   const observationButton = document.getElementById('observation-button');
+  const telescopeButton = document.getElementById('telescope-button');
   const compassButton = document.getElementById('compass-button');
 
   if (observationButton) {
@@ -1396,6 +1420,20 @@ function setupNavigationButtons() {
         HNE: (${GRSS_RAW_POSITION.x.toFixed(3)}, ${GRSS_RAW_POSITION.z.toFixed(3)}, ${GRSS_RAW_POSITION.y.toFixed(3)})<br>
         This point represents the general observation center in the semantic space.
       `);
+    });
+  }
+
+  if (telescopeButton) {
+    telescopeButton.addEventListener('click', () => {
+      if (!latestObservedPlanet) {
+        addObservationLog('Telescope is waiting for the first attention scan.');
+        return;
+      }
+
+      focusOnPlanet(latestObservedPlanet);
+      showCompanyInfo(latestObservedPlanet);
+      clearTelescopeAlert();
+      addObservationLog(`Telescope focused on latest observed company: ${latestObservedPlanet.userData.name}.`);
     });
   }
 
