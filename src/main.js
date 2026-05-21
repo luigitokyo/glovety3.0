@@ -283,7 +283,7 @@ function addCustomAxes(center = new THREE.Vector3(0, 0, 0), length = 3000) {
   });
 }
 
-function addGalaxyStars(count = 60000) {
+function addGalaxyStars(count = 200000) {
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
