@@ -220,17 +220,44 @@ function ensureUI() {
 // ---------- scale settings ----------
 // 数字を大きくすると企業惑星同士がさらに離れます。
 // まずは 24。もっと宇宙っぽく広げたい場合は 35 / 50 に上げる。
-const SPACE_SCALE = 240;
-const COORDINATE_UNIT_SCALE = 120;
+// ---------- scale settings ----------
+
+// HNE座標1.0あたりの表示距離。
+// 企業惑星同士の間隔だけを決める。
+const COORDINATE_UNIT_SCALE = 600;
+
+// CSV座標の中心。既存CSVが2.5中心ならこのまま。
 const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
+
+// 重力値1.0あたりの惑星半径。
+// ここは座標スケールとは完全に独立させる。
+const GRAVITY_RADIUS_SCALE = 1.2;
+
+// 最小視認半径。重力0でも見えるようにするための表示補正。
+const PLANET_BASE_RADIUS = 1.8;
 
 function toWorldPosition(x, y, z) {
   return new THREE.Vector3(
-    (parseFloat(x) - HNE_CENTER.x) * SPACE_SCALE,
-    (parseFloat(y) - HNE_CENTER.y) * SPACE_SCALE,
-    (parseFloat(z) - HNE_CENTER.z) * SPACE_SCALE
+    (parseFloat(x) - HNE_CENTER.x) * COORDINATE_UNIT_SCALE,
+    (parseFloat(y) - HNE_CENTER.y) * COORDINATE_UNIT_SCALE,
+    (parseFloat(z) - HNE_CENTER.z) * COORDINATE_UNIT_SCALE
   );
 }
+
+function radiusFromGravity(gravity) {
+  const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
+
+  // 上限で丸めない。
+  // 重力値に比例して半径を決めるが、座標スケールとは切り離す。
+  return PLANET_BASE_RADIUS + g * GRAVITY_RADIUS_SCALE;
+}
+
+function colorIntensityFromGravity(gravity) {
+  const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
+  return Math.min(g / 7, 1);
+}
+
+
 
 
 
