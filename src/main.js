@@ -222,9 +222,12 @@ function ensureUI() {
 // SCALE SETTINGS
 // ======================================================
 
+// ======================================================
+// SCALE SETTINGS
+// ======================================================
+
 // HNE座標1.0あたりの表示距離。
 // ここは「座標メモリの見た目間隔」だけを決める。
-// 例：600なら、HNE座標1.0 = 600 world units。
 const COORDINATE_UNIT_SCALE = 600;
 
 // CSV座標の中心。
@@ -232,22 +235,26 @@ const COORDINATE_UNIT_SCALE = 600;
 const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 
 // 重力値1.0を、座標メモリ1.0に対してどれくらいの半径にするか。
-// 0.01 = 座標メモリ1.0の1%。
-// COORDINATE_UNIT_SCALE=600なら、重力1.0の半径 = 6。
-const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.001;
+// 0.001 = 座標メモリ1.0の0.1%
+// COORDINATE_UNIT_SCALE=600なら、重力1.0の半径増加 = 0.6
+const GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.0001;
 
 // 重力0でも最低限見えるようにする視認性補正。
-// 0.0003 = 座標メモリ1.0の0.3%。
-// COORDINATE_UNIT_SCALE=600なら、最低半径 = 1.8。
-const PLANET_BASE_RADIUS_RATIO = 0.0003;
-
-// 重力値1.0あたりの半径増加
-// かなり小さめ。必要なら 0.3〜0.8 で調整
-const GRAVITY_RADIUS_WORLD_SCALE = 0.1;
+// 0.0003 = 座標メモリ1.0の0.03%
+// COORDINATE_UNIT_SCALE=600なら、最低半径 = 0.18
+const PLANET_BASE_RADIUS_RATIO_TO_COORDINATE_UNIT = 0.00005;
 
 // 色の濃さだけを決める参照最大値。
 // 半径の上限ではない。
 const GRAVITY_COLOR_REFERENCE_MAX = 7;
+
+// 実際にThree.jsで使うworld unitに変換。
+// ここで初めて、座標メモリに対する比率をworld unitへ落とす。
+const PLANET_BASE_RADIUS_WORLD =
+  COORDINATE_UNIT_SCALE * PLANET_BASE_RADIUS_RATIO_TO_COORDINATE_UNIT;
+
+const GRAVITY_RADIUS_WORLD_SCALE =
+  COORDINATE_UNIT_SCALE * GRAVITY_RADIUS_RATIO_TO_COORDINATE_UNIT;
 
 function toWorldPosition(x, y, z) {
   return new THREE.Vector3(
@@ -260,9 +267,6 @@ function toWorldPosition(x, y, z) {
 function radiusFromGravity(gravity) {
   const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
 
-  // 重要：
-  // ここでは COORDINATE_UNIT_SCALE を絶対に使わない。
-  // 座標スケールと惑星半径スケールを完全に分離する。
   return PLANET_BASE_RADIUS_WORLD + g * GRAVITY_RADIUS_WORLD_SCALE;
 }
 
@@ -270,7 +274,6 @@ function colorIntensityFromGravity(gravity) {
   const g = Number.isFinite(gravity) ? Math.max(gravity, 0) : 0;
   return Math.min(g / GRAVITY_COLOR_REFERENCE_MAX, 1);
 }
-
 // ======================================================
 // SCENE
 // ======================================================
