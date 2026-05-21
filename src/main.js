@@ -15,7 +15,14 @@ const BASE_URL = import.meta.env.BASE_URL || './';
 const publicAsset = (path) => `${BASE_URL}${String(path).replace(/^\/+/, '')}`;
 
 // Ticker speed: smaller number = faster. Recommended: 24.
-const TICKER_SPEED_SECONDS = 40;
+const TICKER_SPEED_SECONDS = 24;
+
+// Attention signal layer. These are display/update intervals, not external API polling intervals.
+const ATTENTION_SCAN_INTERVAL_MS = 10000;
+const SNS_PARTICLE_MAX_AGE_MS = 180000;
+const NEWS_PARTICLE_MAX_AGE_MS = 55000;
+const FLOATING_CAPTION_INTERVAL_MS = 4500;
+const MAX_SIGNAL_PARTICLES = 700;
 
 ensureUI();
 
@@ -73,6 +80,23 @@ function ensureUI() {
 .ticker-item { flex: 0 0 auto; padding: 0 30px; color: rgba(10,18,32,.92); font-size: 13px; line-height: 34px; font-weight: 650; letter-spacing: .01em; }
 .ticker-separator { color: rgba(30,64,120,.6); margin-left: 6px; }
 @keyframes tickerMoveContinuous { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* Observation log */
+#observation-log { position: absolute; top: 84px; left: 24px; width: 306px; box-sizing: border-box; padding: 12px; border-radius: 2px; background: rgba(6,12,24,.62); color: rgba(235,248,255,.9); border: 1px solid rgba(180,220,255,.18); backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.14); pointer-events: none; z-index: 21; }
+#observation-log .panel-title { color: rgba(235,248,255,.72); margin-bottom: 8px; }
+#observation-log-list { display: flex; flex-direction: column; gap: 5px; max-height: 146px; overflow: hidden; }
+.observation-log-row { font-size: 11px; line-height: 1.35; color: rgba(235,248,255,.78); border-top: 1px solid rgba(255,255,255,.06); padding-top: 5px; }
+.observation-log-time { color: rgba(120,220,255,.78); font-variant-numeric: tabular-nums; margin-right: 4px; }
+
+/* Signal tooltip / floating captions */
+#signal-tooltip { position: fixed; display: none; max-width: 300px; padding: 10px 12px; border-radius: 2px; background: rgba(255,255,255,.88); color: #101827; border: 1px solid rgba(255,255,255,.72); backdrop-filter: blur(14px); box-shadow: 0 18px 48px rgba(0,0,0,.28); pointer-events: none; z-index: 80; font-size: 12px; line-height: 1.45; }
+.signal-tooltip-kicker { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 900; color: rgba(30,64,120,.86); margin-bottom: 4px; }
+.signal-tooltip-title { font-size: 13px; font-weight: 850; color: #101827; margin-bottom: 4px; }
+.signal-tooltip-meta { color: rgba(16,24,39,.62); font-size: 11px; margin-top: 6px; }
+.signal-tooltip-hint { color: rgba(30,64,120,.74); font-size: 11px; margin-top: 6px; font-weight: 800; }
+.floating-signal-caption { position: fixed; max-width: 280px; padding: 7px 10px; border-radius: 2px; background: rgba(255,255,255,.84); color: rgba(10,18,32,.9); border: 1px solid rgba(255,255,255,.64); box-shadow: 0 12px 36px rgba(0,0,0,.26); pointer-events: none; z-index: 65; font-size: 12px; font-weight: 750; line-height: 1.35; text-shadow: none; animation: signalCaptionFloat 2.8s ease-out forwards; }
+@keyframes signalCaptionFloat { 0% { transform: translate(-50%, 0); opacity: 0; } 12% { opacity: 1; } 78% { opacity: .95; } 100% { transform: translate(-50%, -28px); opacity: 0; } }
+
       #infoPanel strong { font-size: 16px; }
 
       #top-right-controls { position: absolute; top: 24px; right: 24px; display: flex; gap: 10px; pointer-events: auto; z-index: 30; }
@@ -102,6 +126,7 @@ function ensureUI() {
         .glovety-logo-img { height: 36px; max-width: 170px; }
         #search-box { top: 72px; width: calc(100vw - 32px); }
         #ranking-panel { display: none; }
+        #observation-log { display: none; }
         #control-panel { left: 16px; right: 16px; bottom: 18px; top: auto; width: auto; }
         #top-right-controls { top: 16px; right: 16px; }
         #infoPanel { right: 16px; left: 16px; bottom: 76px; min-width: 0; max-width: none; }
@@ -141,6 +166,13 @@ function ensureUI() {
         <button id="compare-button">Compare</button>
         <div id="compare-result-mini"></div>
       </div>
+
+      <div id="observation-log">
+        <div class="panel-title">Observation Log</div>
+        <div id="observation-log-list"></div>
+      </div>
+
+      <div id="signal-tooltip"></div>
 
       <div id="side-menu">
         <div class="menu-title">Glovety Observatory</div>
@@ -237,11 +269,14 @@ const animateCallbacks = [];
 const planetMeshes = [];
 const companyPlanetMeshes = [];
 const shootingStars = [];
+const signalParticles = [];
 const compareGroup = new THREE.Group();
 scene.add(compareGroup);
 
 let activeCompareVisual = null;
 let gravityTickerTimer = null;
+let attentionScanTimer = null;
+let floatingCaptionTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
 let cameraTween = null;
 const infoPanel = document.getElementById('infoPanel');
@@ -395,6 +430,13 @@ const compareGlowTexture = createRadialTexture(256, [
   [0.25, 'rgba(120,220,255,.85)'],
   [0.62, 'rgba(70,170,255,.22)'],
   [1.0, 'rgba(70,170,255,0)']
+]);
+
+const signalParticleTexture = createRadialTexture(128, [
+  [0.0, 'rgba(255,255,255,1)'],
+  [0.24, 'rgba(190,230,255,.92)'],
+  [0.62, 'rgba(120,180,255,.24)'],
+  [1.0, 'rgba(120,180,255,0)']
 ]);
 
 const shootingStarTailTexture = createTailTexture();
@@ -568,6 +610,7 @@ function loadPlanetsFromCSV(url) {
       }
       renderRankingPanel();
       startGravityTicker();
+      startAttentionSignalLayer();
       if (SHOW_CLUSTER_GALAXIES) checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
     })
     .catch((error) => console.error('Failed to load CSV:', error));
@@ -756,6 +799,403 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
   animateCallbacks.push(() => { group.rotation.y += baseSpeed; });
 }
 
+
+// ======================================================
+// Attention Signal Layer: SNS orbit + News curl particles
+// ======================================================
+
+const SIGNAL_TOPIC_LIBRARY = [
+  { label: 'AI strategy', summary: 'Public conversation is clustering around AI strategy and product roadmap.', keywords: ['AI', 'roadmap', 'platform'] },
+  { label: 'Earnings outlook', summary: 'Attention is focused on earnings, guidance and margin expectations.', keywords: ['earnings', 'guidance', 'margin'] },
+  { label: 'Customer experience', summary: 'Discussion is forming around customer experience, pricing and service quality.', keywords: ['customers', 'pricing', 'service'] },
+  { label: 'Supply chain shift', summary: 'Signals point to logistics, automation and supplier network changes.', keywords: ['supply chain', 'automation', 'logistics'] },
+  { label: 'Sustainability signal', summary: 'Recent attention is related to climate, circularity and environmental commitments.', keywords: ['climate', 'sustainability', 'emissions'] },
+  { label: 'Labor and culture', summary: 'Conversation is clustering around employment, culture and workplace conditions.', keywords: ['labor', 'workers', 'culture'] },
+  { label: 'Product momentum', summary: 'Signals indicate rising discussion around product launches and category momentum.', keywords: ['product', 'launch', 'demand'] }
+];
+
+function startAttentionSignalLayer() {
+  if (attentionScanTimer) clearInterval(attentionScanTimer);
+  if (floatingCaptionTimer) clearInterval(floatingCaptionTimer);
+
+  performAttentionScan();
+
+  attentionScanTimer = setInterval(() => {
+    performAttentionScan();
+  }, ATTENTION_SCAN_INTERVAL_MS);
+
+  floatingCaptionTimer = setInterval(() => {
+    spawnRandomFloatingCaption();
+  }, FLOATING_CAPTION_INTERVAL_MS);
+}
+
+function performAttentionScan() {
+  const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
+  if (candidates.length === 0) return;
+
+  const planet = pickRandom(candidates);
+  const signal = buildMockSignalForPlanet(planet);
+
+  spawnSNSOrbitParticles(planet, signal.snsItems);
+  spawnNewsCurlParticles(planet, signal.newsItems);
+  enforceSignalParticleLimit();
+
+  addObservationLog(`${planet.userData.name} signal scan: ${signal.snsItems.length} SNS / ${signal.newsItems.length} News particles released.`);
+}
+
+function buildMockSignalForPlanet(planet) {
+  const name = planet.userData.name;
+  const gravity = planet.userData.gravity || 0;
+
+  const snsCount = THREE.MathUtils.clamp(Math.round(3 + gravity * 1.2 + Math.random() * 5), 3, 18);
+  const newsCount = THREE.MathUtils.clamp(Math.round(1 + gravity * 0.35 + Math.random() * 2), 1, 6);
+
+  const snsItems = Array.from({ length: snsCount }, (_, index) => {
+    const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
+    return {
+      kind: 'sns',
+      title: `${topic.label} discussion`,
+      topicLabel: topic.label,
+      summary: topic.summary,
+      source: 'SNS Signal',
+      publishedAt: `${Math.max(1, Math.round(Math.random() * 58))}m ago`,
+      url: `https://x.com/search?q=${encodeURIComponent(`${name} ${topic.keywords[0]}`)}&src=typed_query`,
+      weight: 1 + Math.random(),
+      index
+    };
+  });
+
+  const newsItems = Array.from({ length: newsCount }, (_, index) => {
+    const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
+    return {
+      kind: 'news',
+      title: `${topic.label} coverage`,
+      topicLabel: topic.label,
+      summary: topic.summary,
+      source: 'News Signal',
+      publishedAt: `${Math.max(1, Math.round(Math.random() * 24))}h ago`,
+      url: `https://www.google.com/search?tbm=nws&q=${encodeURIComponent(`${name} ${topic.keywords[0]}`)}`,
+      weight: 1.4 + Math.random() * 1.2,
+      index
+    };
+  });
+
+  return { snsItems, newsItems };
+}
+
+function spawnSNSOrbitParticles(planet, items) {
+  items.forEach((item) => {
+    const radius = planet.userData.radius || 1;
+    const orbitRadius = Math.max(14, radius * (16 + Math.random() * 18));
+    const material = new THREE.SpriteMaterial({
+      map: signalParticleTexture,
+      color: new THREE.Color(0x94d7ff),
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const particle = new THREE.Sprite(material);
+    particle.scale.set(4.2, 4.2, 1);
+    particle.position.copy(planet.position);
+    particle.userData = {
+      isSignalParticle: true,
+      kind: 'sns',
+      mode: 'orbit',
+      targetPlanet: planet,
+      bornAt: performance.now(),
+      maxAge: SNS_PARTICLE_MAX_AGE_MS * (0.75 + Math.random() * 0.5),
+      fadeInMs: 1600,
+      orbitRadius,
+      orbitSpeed: 0.0035 + Math.random() * 0.006,
+      orbitAngle: Math.random() * Math.PI * 2,
+      orbitTiltX: Math.random() * Math.PI,
+      orbitTiltZ: Math.random() * Math.PI,
+      phase: Math.random() * Math.PI * 2,
+      baseOpacity: 0.44 + Math.random() * 0.34,
+      url: item.url,
+      title: item.title,
+      topicLabel: item.topicLabel,
+      summary: item.summary,
+      source: item.source,
+      publishedAt: item.publishedAt,
+      createdOrder: performance.now() + Math.random()
+    };
+
+    scene.add(particle);
+    signalParticles.push(particle);
+  });
+}
+
+function spawnNewsCurlParticles(planet, items) {
+  items.forEach((item) => {
+    const target = planet.position.clone();
+    const orbitRadius = Math.max(18, (planet.userData.radius || 1) * (22 + Math.random() * 18));
+    const startDirection = randomUnitVector();
+    const startDistance = 260 + Math.random() * 420;
+    const startPosition = target.clone().add(startDirection.multiplyScalar(startDistance));
+    const tangent = randomUnitVector().cross(startDirection).normalize();
+
+    const material = new THREE.SpriteMaterial({
+      map: signalParticleTexture,
+      color: new THREE.Color(0xffffff),
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const particle = new THREE.Sprite(material);
+    particle.scale.set(6.5, 6.5, 1);
+    particle.position.copy(startPosition);
+    particle.userData = {
+      isSignalParticle: true,
+      kind: 'news',
+      mode: 'incoming',
+      targetPlanet: planet,
+      bornAt: performance.now(),
+      maxAge: NEWS_PARTICLE_MAX_AGE_MS * (0.82 + Math.random() * 0.36),
+      startPosition,
+      startDirection,
+      tangent,
+      orbitRadius,
+      orbitAngle: Math.random() * Math.PI * 2,
+      curlTurns: 1.05 + Math.random() * 0.65,
+      phase: Math.random() * Math.PI * 2,
+      baseOpacity: 0.72 + Math.random() * 0.24,
+      hasCaptioned: false,
+      url: item.url,
+      title: item.title,
+      topicLabel: item.topicLabel,
+      summary: item.summary,
+      source: item.source,
+      publishedAt: item.publishedAt,
+      createdOrder: performance.now() + Math.random()
+    };
+
+    scene.add(particle);
+    signalParticles.push(particle);
+  });
+}
+
+function updateSignalParticles(now) {
+  for (let i = signalParticles.length - 1; i >= 0; i--) {
+    const particle = signalParticles[i];
+    const data = particle.userData;
+    const age = now - data.bornAt;
+    const progress = THREE.MathUtils.clamp(age / data.maxAge, 0, 1);
+
+    if (progress >= 1) {
+      removeSignalParticleAtIndex(i);
+      continue;
+    }
+
+    if (data.kind === 'sns') {
+      updateSNSOrbitParticle(particle, data, age, progress);
+    } else if (data.kind === 'news') {
+      updateNewsCurlParticle(particle, data, age, progress);
+    }
+  }
+}
+
+function updateSNSOrbitParticle(particle, data, age, progress) {
+  const planet = data.targetPlanet;
+  if (!planet) return;
+
+  data.orbitAngle += data.orbitSpeed;
+  const x = Math.cos(data.orbitAngle) * data.orbitRadius;
+  const z = Math.sin(data.orbitAngle) * data.orbitRadius;
+  const y = Math.sin(data.orbitAngle + data.phase) * data.orbitRadius * 0.26;
+
+  const offset = new THREE.Vector3(x, y, z);
+  offset.applyAxisAngle(new THREE.Vector3(1, 0, 0), data.orbitTiltX);
+  offset.applyAxisAngle(new THREE.Vector3(0, 0, 1), data.orbitTiltZ);
+
+  particle.position.copy(planet.position).add(offset);
+
+  const fadeIn = THREE.MathUtils.clamp(age / data.fadeInMs, 0, 1);
+  const fadeOut = progress > 0.72 ? 1 - (progress - 0.72) / 0.28 : 1;
+  const pulse = 0.72 + 0.28 * Math.sin(performance.now() * 0.003 + data.phase);
+  particle.material.opacity = Math.max(0, data.baseOpacity * fadeIn * fadeOut * pulse);
+}
+
+function updateNewsCurlParticle(particle, data, age, progress) {
+  const planet = data.targetPlanet;
+  if (!planet) return;
+
+  const target = planet.position.clone();
+  const incomingEnd = target.clone().add(data.startDirection.clone().multiplyScalar(data.orbitRadius));
+
+  if (progress < 0.52) {
+    const t = easeOutCubic(progress / 0.52);
+    const curveLift = Math.sin(t * Math.PI) * 52;
+    const curved = new THREE.Vector3().lerpVectors(data.startPosition, incomingEnd, t)
+      .add(data.tangent.clone().multiplyScalar(curveLift));
+    particle.position.copy(curved);
+    particle.material.opacity = data.baseOpacity * Math.min(1, progress / 0.12);
+  } else {
+    const curlT = (progress - 0.52) / 0.48;
+    const angle = data.orbitAngle + curlT * Math.PI * 2 * data.curlTurns;
+    const radius = data.orbitRadius * (1.25 - curlT * 0.45);
+    const offset = new THREE.Vector3(
+      Math.cos(angle) * radius,
+      Math.sin(angle * 1.25 + data.phase) * radius * 0.25,
+      Math.sin(angle) * radius
+    );
+    offset.applyAxisAngle(data.tangent, 0.65);
+    particle.position.copy(target).add(offset);
+
+    const fade = Math.max(0, 1 - curlT);
+    const flash = 0.75 + 0.25 * Math.sin(performance.now() * 0.014 + data.phase);
+    particle.material.opacity = data.baseOpacity * fade * flash;
+
+    if (!data.hasCaptioned && curlT > 0.16) {
+      data.hasCaptioned = true;
+      createFloatingSignalCaption(particle, true);
+    }
+  }
+}
+
+function removeSignalParticleAtIndex(index) {
+  const particle = signalParticles[index];
+  if (!particle) return;
+  scene.remove(particle);
+  if (particle.material) particle.material.dispose();
+  signalParticles.splice(index, 1);
+}
+
+function enforceSignalParticleLimit() {
+  while (signalParticles.length > MAX_SIGNAL_PARTICLES) {
+    let oldestIndex = 0;
+    let oldestOrder = Infinity;
+    signalParticles.forEach((particle, index) => {
+      const order = particle.userData.createdOrder || 0;
+      if (order < oldestOrder) {
+        oldestOrder = order;
+        oldestIndex = index;
+      }
+    });
+    removeSignalParticleAtIndex(oldestIndex);
+  }
+}
+
+function getSignalHit() {
+  const activeParticles = signalParticles.filter((particle) => particle.material && particle.material.opacity > 0.04);
+  const hits = raycaster.intersectObjects(activeParticles, false);
+  return hits.length > 0 ? hits[0].object : null;
+}
+
+function handleSignalPointerMove(event) {
+  const clickedElement = event.target;
+  if (clickedElement.closest && (clickedElement.closest('#ui-layer') || clickedElement.closest('#infoPanel'))) {
+    hideSignalTooltip();
+    return;
+  }
+
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  const particle = getSignalHit();
+  if (!particle) {
+    hideSignalTooltip();
+    document.body.style.cursor = '';
+    return;
+  }
+
+  showSignalTooltip(event, particle);
+  document.body.style.cursor = 'pointer';
+}
+
+function showSignalTooltip(event, particle) {
+  const tooltip = document.getElementById('signal-tooltip');
+  if (!tooltip) return;
+  const data = particle.userData;
+  const kindLabel = data.kind === 'news' ? 'NEWS SIGNAL' : 'SNS SIGNAL';
+  tooltip.innerHTML = `
+    <div class="signal-tooltip-kicker">${kindLabel}</div>
+    <div class="signal-tooltip-title">${escapeHTML(data.title || data.topicLabel || 'Observed signal')}</div>
+    <div>${escapeHTML(data.summary || '')}</div>
+    <div class="signal-tooltip-meta">${escapeHTML(data.source || '')}${data.publishedAt ? ` / ${escapeHTML(data.publishedAt)}` : ''}</div>
+    <div class="signal-tooltip-hint">Click to open source</div>
+  `;
+  tooltip.style.left = `${event.clientX + 14}px`;
+  tooltip.style.top = `${event.clientY + 14}px`;
+  tooltip.style.display = 'block';
+}
+
+function hideSignalTooltip() {
+  const tooltip = document.getElementById('signal-tooltip');
+  if (tooltip) tooltip.style.display = 'none';
+}
+
+function spawnRandomFloatingCaption() {
+  const candidates = signalParticles.filter((particle) => {
+    const data = particle.userData;
+    if (!data || !particle.material || particle.material.opacity < 0.12) return false;
+    const age = performance.now() - data.bornAt;
+    return age > 1000 && age < data.maxAge * 0.82;
+  });
+
+  if (candidates.length === 0) return;
+  const particle = pickRandom(candidates);
+  createFloatingSignalCaption(particle, false);
+}
+
+function createFloatingSignalCaption(particle, preferSummary = false) {
+  const data = particle.userData;
+  const uiLayer = document.getElementById('ui-layer') || document.body;
+  const screen = toScreenPosition(particle.position);
+  if (!screen || screen.x < -40 || screen.x > window.innerWidth + 40 || screen.y < -40 || screen.y > window.innerHeight + 40) return;
+
+  const text = preferSummary
+    ? (data.summary || data.topicLabel || data.title)
+    : (data.topicLabel || data.summary || 'Observed signal');
+
+  const caption = document.createElement('div');
+  caption.className = 'floating-signal-caption';
+  caption.textContent = text;
+  caption.style.left = `${screen.x}px`;
+  caption.style.top = `${screen.y - 12}px`;
+  uiLayer.appendChild(caption);
+
+  setTimeout(() => caption.remove(), 3000);
+}
+
+function toScreenPosition(position) {
+  const vector = position.clone().project(camera);
+  if (vector.z < -1 || vector.z > 1) return null;
+  return {
+    x: (vector.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-vector.y * 0.5 + 0.5) * window.innerHeight
+  };
+}
+
+function addObservationLog(message) {
+  const logList = document.getElementById('observation-log-list');
+  if (!logList) return;
+  const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const row = document.createElement('div');
+  row.className = 'observation-log-row';
+  row.innerHTML = `<span class="observation-log-time">${time}</span>${escapeHTML(message)}`;
+  logList.prepend(row);
+  while (logList.children.length > 8) {
+    logList.lastElementChild.remove();
+  }
+}
+
+function randomUnitVector() {
+  const theta = Math.random() * Math.PI * 2;
+  const z = Math.random() * 2 - 1;
+  const r = Math.sqrt(1 - z * z);
+  return new THREE.Vector3(r * Math.cos(theta), z, r * Math.sin(theta)).normalize();
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
 // ======================================================
 // Interactions
 // ======================================================
@@ -763,12 +1203,26 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
+window.addEventListener('pointermove', handleSignalPointerMove);
+
 window.addEventListener('pointerdown', (event) => {
   const clickedElement = event.target;
   if (clickedElement.closest && (clickedElement.closest('#ui-layer') || clickedElement.closest('#infoPanel'))) return;
+
   pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
+
+  const signalHit = getSignalHit();
+  if (signalHit) {
+    const url = signalHit.userData.url;
+    if (url) {
+      addObservationLog(`Opened ${signalHit.userData.kind.toUpperCase()} signal: ${signalHit.userData.title || signalHit.userData.topicLabel}`);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+    return;
+  }
+
   const intersects = raycaster.intersectObjects(planetMeshes);
   if (intersects.length > 0 && intersects[0].object.name) showCompanyInfo(intersects[0].object);
 });
@@ -1135,6 +1589,7 @@ function animate() {
   scene.rotation.y += 0.000001;
   updateCameraTween();
   updateCompareVisual(now);
+  updateSignalParticles(now);
   controls.update();
 
   for (let i = shootingStars.length - 1; i >= 0; i--) {
