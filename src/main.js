@@ -220,7 +220,7 @@ function ensureUI() {
 // ---------- scale settings ----------
 // 数字を大きくすると企業惑星同士がさらに離れます。
 // まずは 24。もっと宇宙っぽく広げたい場合は 35 / 50 に上げる。
-const SPACE_SCALE = 24;
+const SPACE_SCALE = 240;
 const HNE_CENTER = new THREE.Vector3(2.5, 2.5, 2.5);
 
 function toWorldPosition(x, y, z) {
