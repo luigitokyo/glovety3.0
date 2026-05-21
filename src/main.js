@@ -17,6 +17,11 @@ const publicAsset = (path) => `${BASE_URL}${String(path).replace(/^\/+/, '')}`;
 ensureUI();
 
 function ensureUI() {
+   // StackBlitz / HMR 対策：古いUIを必ず消してから再生成する
+  document.getElementById('glovety-ui-style')?.remove();
+  document.getElementById('ui-layer')?.remove();
+  document.getElementById('infoPanel')?.remove();
+
   if (!document.getElementById('glovety-ui-style')) {
     const style = document.createElement('style');
     style.id = 'glovety-ui-style';
