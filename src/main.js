@@ -1263,31 +1263,27 @@ function spawnRandomFloatingCaption() {
 
 function makeSignalTextSprite(text) {
   const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 256;
+  canvas.width = 512;
+  canvas.height = 128;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const safeText = String(text || 'Observed signal').length > 62
-    ? `${String(text || 'Observed signal').slice(0, 59)}...`
+  const safeText = String(text || 'Observed signal').length > 52
+    ? `${String(text || 'Observed signal').slice(0, 49)}...`
     : String(text || 'Observed signal');
 
-  ctx.font = '500 64px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.font = '400 24px monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = 'rgba(2, 4, 10, 0.76)';
   ctx.fillStyle = 'rgba(236, 248, 255, 0.96)';
-  ctx.shadowColor = 'rgba(120, 220, 255, 0.42)';
-  ctx.shadowBlur = 18;
-
-  ctx.strokeText(safeText, 38, canvas.height / 2);
-  ctx.fillText(safeText, 38, canvas.height / 2);
+  ctx.shadowColor = 'rgba(120, 220, 255, 0.24)';
+  ctx.shadowBlur = 4;
+  ctx.fillText(safeText, 16, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = THREE.NearestFilter;
   texture.needsUpdate = true;
 
   const material = new THREE.SpriteMaterial({
@@ -1299,7 +1295,7 @@ function makeSignalTextSprite(text) {
   });
 
   const sprite = new THREE.Sprite(material);
-  const height = 7.2;
+  const height = 2.4;
   const aspect = canvas.width / canvas.height;
   sprite.scale.set(height * aspect, height, 1);
   sprite.renderOrder = 46;
@@ -1348,8 +1344,8 @@ function createFloatingSignalCaption(particle, preferSummary = false) {
   const sideVector = side.multiplyScalar(sideDirection);
   const upVector = new THREE.Vector3(0, 1, 0);
   const initialTextPosition = particle.position.clone()
-    .add(upVector.clone().multiplyScalar(2.0))
-    .add(sideVector.clone().multiplyScalar(2.7));
+    .add(upVector.clone().multiplyScalar(0.8))
+    .add(sideVector.clone().multiplyScalar(1.2));
 
   sprite.position.copy(initialTextPosition);
   const trail = createSignalCaptionTrail(particle.position, initialTextPosition);
@@ -1363,12 +1359,12 @@ function createFloatingSignalCaption(particle, preferSummary = false) {
     sourceParticle: particle,
     anchor: particle.position.clone(),
     bornAt: performance.now(),
-    maxAge: 2600 + Math.random() * 900,
+    maxAge: 1700 + Math.random() * 500,
     upVector,
     sideVector,
     sourceOffset: new THREE.Vector3(0, 0, 0),
-    driftBase: 2.7 + Math.random() * 1.6,
-    liftBase: 1.8 + Math.random() * 1.1
+    driftBase: 1.05 + Math.random() * 0.45,
+    liftBase: 0.7 + Math.random() * 0.35
   });
 }
 
@@ -1390,8 +1386,8 @@ function updateFloatingSignalTexts(now) {
 
     const drift = easeOutCubic(progress);
     const textPosition = sourcePosition.clone()
-      .add(item.upVector.clone().multiplyScalar(item.liftBase + drift * 6.2))
-      .add(item.sideVector.clone().multiplyScalar(item.driftBase + drift * 6.0));
+      .add(item.upVector.clone().multiplyScalar(item.liftBase + drift * 1.25))
+      .add(item.sideVector.clone().multiplyScalar(item.driftBase + drift * 1.45));
 
     item.sprite.position.copy(textPosition);
 
@@ -1400,16 +1396,16 @@ function updateFloatingSignalTexts(now) {
     positions[1] = sourcePosition.y;
     positions[2] = sourcePosition.z;
     positions[3] = textPosition.x;
-    positions[4] = textPosition.y - 0.7;
+    positions[4] = textPosition.y - 0.18;
     positions[5] = textPosition.z;
     item.trail.geometry.attributes.position.needsUpdate = true;
 
-    const fadeIn = THREE.MathUtils.clamp(age / 180, 0, 1);
-    const fadeOut = progress > 0.70 ? 1 - (progress - 0.70) / 0.30 : 1;
+    const fadeIn = THREE.MathUtils.clamp(age / 120, 0, 1);
+    const fadeOut = progress > 0.78 ? 1 - (progress - 0.78) / 0.22 : 1;
     const alpha = Math.max(0, fadeIn * fadeOut);
 
-    item.sprite.material.opacity = alpha;
-    item.trail.material.opacity = alpha * 0.62;
+    item.sprite.material.opacity = alpha * 0.92;
+    item.trail.material.opacity = alpha * 0.36;
   }
 }
 
