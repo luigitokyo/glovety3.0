@@ -14,6 +14,19 @@ import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 const BASE_URL = import.meta.env.BASE_URL || './';
 const publicAsset = (path) => `${BASE_URL}${String(path).replace(/^\/+/, '')}`;
 
+// Ticker speed: smaller number = faster. Recommended: 24.
+const TICKER_SPEED_SECONDS = 24;
+
+// Attention signal layer. These are display/update intervals, not external API polling intervals.
+const ATTENTION_SCAN_INTERVAL_MS = 10000;
+const SNS_PARTICLE_MAX_AGE_MS = 180000;
+const NEWS_PARTICLE_MAX_AGE_MS = 55000;
+const FLOATING_CAPTION_INTERVAL_MS = 4500;
+const MAX_SIGNAL_PARTICLES = 700;
+
+// Build check for cache debugging.
+window.__GLOVETY_BUILD_CHECK__ = 'main-sharp-particles-2026-05-25-001';
+
 ensureUI();
 
 function ensureUI() {
@@ -57,25 +70,43 @@ function ensureUI() {
 .hne-bar-value { text-align: right; color: rgba(230,246,255,.72); font-variant-numeric: tabular-nums; }
 .company-interpretation { margin-top: 10px; padding: 12px; border-radius: 2px; background: rgba(255,255,255,.07); color: rgba(236,248,255,.86); font-size: 12px; line-height: 1.55; }
 .company-meta { margin-top: 10px; color: rgba(230,246,255,.52); font-size: 11px; }
-
 .info-panel-close { position: absolute; top: 8px; right: 10px; width: 24px; height: 24px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.12); color: rgba(255,255,255,.86); cursor: pointer; font-size: 16px; line-height: 20px; border-radius: 1px; }
 .info-panel-close:hover { background: rgba(255,255,255,.24); color: #fff; }
-.compare-clear-button { margin-top: 12px; width: 100%; height: 34px; border: 1px solid rgba(255,255,255,.32); background: rgba(255,255,255,.12); color: rgba(255,255,255,.92); cursor: pointer; border-radius: 1px; font-weight: 800; letter-spacing: .02em; }
-.compare-clear-button:hover { background: rgba(255,255,255,.24); color: #fff; }
+.compare-clear-button { margin-top: 12px; width: 100%; height: 34px; border: 1px solid rgba(255,255,255,.32); background: rgba(255,255,255,.12); color: rgba(255,255,255,.92); cursor: pointer; border-radius: 1px; font-weight: 800; }
+.compare-clear-button:hover { background: rgba(255,255,255,.22); }
 
 /* Bottom ticker */
 #gravity-ticker { position: absolute; left: 24px; right: 24px; bottom: 18px; height: 40px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 31; }
 #gravity-ticker-label { flex: 0 0 auto; height: 30px; padding: 0 12px; border-radius: 2px; display: flex; align-items: center; background: rgba(255,255,255,.78); color: #101827; font-size: 11px; font-weight: 900; letter-spacing: .08em; border: 1px solid rgba(255,255,255,.6); box-shadow: 0 0 24px rgba(120,190,255,.16); }
 #gravity-ticker-window { flex: 1; height: 34px; overflow: hidden; border-radius: 2px; border: 1px solid rgba(255,255,255,.58); background: rgba(255,255,255,.72); backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.16); }
-#gravity-ticker-track { height: 34px; display: flex; align-items: center; width: max-content; white-space: nowrap; will-change: transform; animation: tickerMoveContinuous 32s linear infinite; }
+#gravity-ticker-track { height: 34px; display: flex; align-items: center; width: max-content; white-space: nowrap; will-change: transform; animation: tickerMoveContinuous ${TICKER_SPEED_SECONDS}s linear infinite; }
 .ticker-item { flex: 0 0 auto; padding: 0 30px; color: rgba(10,18,32,.92); font-size: 13px; line-height: 34px; font-weight: 650; letter-spacing: .01em; }
 .ticker-separator { color: rgba(30,64,120,.6); margin-left: 6px; }
 @keyframes tickerMoveContinuous { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* Observation log */
+#observation-log { position: absolute; top: 84px; left: 24px; width: 306px; box-sizing: border-box; padding: 12px; border-radius: 2px; background: rgba(6,12,24,.62); color: rgba(235,248,255,.9); border: 1px solid rgba(180,220,255,.18); backdrop-filter: blur(14px); box-shadow: 0 0 30px rgba(80,160,255,.14); pointer-events: none; z-index: 21; }
+#observation-log .panel-title { color: rgba(235,248,255,.72); margin-bottom: 8px; }
+#observation-log-list { display: flex; flex-direction: column; gap: 5px; max-height: 146px; overflow: hidden; }
+.observation-log-row { font-size: 11px; line-height: 1.35; color: rgba(235,248,255,.78); border-top: 1px solid rgba(255,255,255,.06); padding-top: 5px; }
+.observation-log-time { color: rgba(120,220,255,.78); font-variant-numeric: tabular-nums; margin-right: 4px; }
+
+/* Signal tooltip / floating captions */
+#signal-tooltip { position: fixed; display: none; max-width: 300px; padding: 10px 12px; border-radius: 2px; background: rgba(255,255,255,.88); color: #101827; border: 1px solid rgba(255,255,255,.72); backdrop-filter: blur(14px); box-shadow: 0 18px 48px rgba(0,0,0,.28); pointer-events: none; z-index: 80; font-size: 12px; line-height: 1.45; }
+.signal-tooltip-kicker { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 900; color: rgba(30,64,120,.86); margin-bottom: 4px; }
+.signal-tooltip-title { font-size: 13px; font-weight: 850; color: #101827; margin-bottom: 4px; }
+.signal-tooltip-meta { color: rgba(16,24,39,.62); font-size: 11px; margin-top: 6px; }
+.signal-tooltip-hint { color: rgba(30,64,120,.74); font-size: 11px; margin-top: 6px; font-weight: 800; }
+.floating-signal-caption { position: fixed; max-width: 280px; padding: 7px 10px; border-radius: 2px; background: rgba(255,255,255,.84); color: rgba(10,18,32,.9); border: 1px solid rgba(255,255,255,.64); box-shadow: 0 12px 36px rgba(0,0,0,.26); pointer-events: none; z-index: 65; font-size: 12px; font-weight: 750; line-height: 1.35; text-shadow: none; animation: signalCaptionFloat 2.8s ease-out forwards; }
+@keyframes signalCaptionFloat { 0% { transform: translate(-50%, 0); opacity: 0; } 12% { opacity: 1; } 78% { opacity: .95; } 100% { transform: translate(-50%, -28px); opacity: 0; } }
+
       #infoPanel strong { font-size: 16px; }
 
       #top-right-controls { position: absolute; top: 24px; right: 24px; display: flex; gap: 10px; pointer-events: auto; z-index: 30; }
       .observatory-icon-button { width: 44px; height: 44px; border-radius: 2px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16); color: #fff; font-size: 20px; cursor: pointer; backdrop-filter: blur(16px); box-shadow: 0 0 24px rgba(120,190,255,.22); transition: transform .2s ease, background .2s ease, box-shadow .2s ease; }
       .observatory-icon-button:hover { transform: translateY(-1px) scale(1.04); background: rgba(255,255,255,.26); box-shadow: 0 0 34px rgba(120,190,255,.36); }
+      #telescope-button.telescope-alert { background: rgba(210,245,255,.62) !important; border-color: rgba(220,250,255,1) !important; color: #041226 !important; box-shadow: 0 0 24px rgba(160,235,255,.98), 0 0 64px rgba(80,190,255,.72), inset 0 0 20px rgba(255,255,255,.38) !important; animation: telescopePulse 1.15s ease-in-out infinite; }
+      @keyframes telescopePulse { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.08); filter: brightness(1.35); } 100% { transform: scale(1); filter: brightness(1); } }
 
       #ranking-panel { position: absolute; top: 84px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.78); color: #101827; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 18px 60px rgba(0,0,0,.28); backdrop-filter: blur(18px); pointer-events: auto; z-index: 25; }
       #control-panel { position: absolute; top: 470px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.76); color: #101827; border: 1px solid rgba(255,255,255,.65); box-shadow: 0 18px 60px rgba(0,0,0,.26); backdrop-filter: blur(18px); pointer-events: auto; z-index: 24; }
@@ -100,6 +131,7 @@ function ensureUI() {
         .glovety-logo-img { height: 36px; max-width: 170px; }
         #search-box { top: 72px; width: calc(100vw - 32px); }
         #ranking-panel { display: none; }
+        #observation-log { display: none; }
         #control-panel { left: 16px; right: 16px; bottom: 18px; top: auto; width: auto; }
         #top-right-controls { top: 16px; right: 16px; }
         #infoPanel { right: 16px; left: 16px; bottom: 76px; min-width: 0; max-width: none; }
@@ -124,6 +156,7 @@ function ensureUI() {
 
       <div id="top-right-controls">
         <button id="observation-button" class="observatory-icon-button" title="Go to GRSS observation point">◎</button>
+        <button id="telescope-button" class="observatory-icon-button" title="Focus latest observed company">🔭</button>
         <button id="compass-button" class="observatory-icon-button" title="Return to initial view">⌖</button>
       </div>
 
@@ -139,6 +172,13 @@ function ensureUI() {
         <button id="compare-button">Compare</button>
         <div id="compare-result-mini"></div>
       </div>
+
+      <div id="observation-log">
+        <div class="panel-title">Observation Log</div>
+        <div id="observation-log-list"></div>
+      </div>
+
+      <div id="signal-tooltip"></div>
 
       <div id="side-menu">
         <div class="menu-title">Glovety Observatory</div>
@@ -235,14 +275,26 @@ const animateCallbacks = [];
 const planetMeshes = [];
 const companyPlanetMeshes = [];
 const shootingStars = [];
+const signalParticles = [];
+const floatingSignalTexts = [];
+let hoveredSignalParticle = null;
+const SIGNAL_HIT_RADIUS_PX = 18;
 const compareGroup = new THREE.Group();
 scene.add(compareGroup);
 
+const attentionFocusGroup = new THREE.Group();
+scene.add(attentionFocusGroup);
+
 let activeCompareVisual = null;
+let activeObservedGlow = null;
 let gravityTickerTimer = null;
+let attentionScanTimer = null;
+let latestObservedPlanet = null;
+let floatingCaptionTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
 let cameraTween = null;
 const infoPanel = document.getElementById('infoPanel');
+
 if (infoPanel) {
   infoPanel.addEventListener('click', (event) => {
     if (event.target.closest('.info-panel-close')) {
@@ -392,6 +444,16 @@ const compareGlowTexture = createRadialTexture(256, [
   [0.25, 'rgba(120,220,255,.85)'],
   [0.62, 'rgba(70,170,255,.22)'],
   [1.0, 'rgba(70,170,255,0)']
+]);
+
+const signalParticleTexture = createRadialTexture(96, [
+  [0.00, 'rgba(255,255,255,1)'],
+  [0.18, 'rgba(245,252,255,1)'],
+  [0.34, 'rgba(140,220,255,.95)'],
+  [0.48, 'rgba(90,170,255,.45)'],
+  [0.62, 'rgba(80,150,255,.08)'],
+  [0.72, 'rgba(80,150,255,0)'],
+  [1.00, 'rgba(80,150,255,0)']
 ]);
 
 const shootingStarTailTexture = createTailTexture();
@@ -565,6 +627,7 @@ function loadPlanetsFromCSV(url) {
       }
       renderRankingPanel();
       startGravityTicker();
+      startAttentionSignalLayer();
       if (SHOW_CLUSTER_GALAXIES) checkAndAddGalaxies(COORDINATE_UNIT_SCALE * 0.12);
     })
     .catch((error) => console.error('Failed to load CSV:', error));
@@ -582,7 +645,7 @@ function startGravityTicker() {
   // We only refresh the content occasionally, so it never stops after one pass.
   gravityTickerTimer = setInterval(() => {
     updateGravityTickerMessage();
-  }, 56000);
+  }, TICKER_SPEED_SECONDS * 1000);
 }
 
 function updateGravityTickerMessage() {
@@ -605,7 +668,7 @@ function updateGravityTickerMessage() {
 
   track.style.animation = 'none';
   void track.offsetWidth;
-  track.style.animation = 'tickerMoveContinuous 32s linear infinite';
+  track.style.animation = `tickerMoveContinuous ${TICKER_SPEED_SECONDS}s linear infinite`;
 }
 
 function escapeHTML(value) {
@@ -753,6 +816,651 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
   animateCallbacks.push(() => { group.rotation.y += baseSpeed; });
 }
 
+
+// ======================================================
+// Attention Signal Layer: SNS orbit + News curl particles
+// ======================================================
+
+const SIGNAL_TOPIC_LIBRARY = [
+  { label: 'AI strategy', summary: 'Public conversation is clustering around AI strategy and product roadmap.', keywords: ['AI', 'roadmap', 'platform'] },
+  { label: 'Earnings outlook', summary: 'Attention is focused on earnings, guidance and margin expectations.', keywords: ['earnings', 'guidance', 'margin'] },
+  { label: 'Customer experience', summary: 'Discussion is forming around customer experience, pricing and service quality.', keywords: ['customers', 'pricing', 'service'] },
+  { label: 'Supply chain shift', summary: 'Signals point to logistics, automation and supplier network changes.', keywords: ['supply chain', 'automation', 'logistics'] },
+  { label: 'Sustainability signal', summary: 'Recent attention is related to climate, circularity and environmental commitments.', keywords: ['climate', 'sustainability', 'emissions'] },
+  { label: 'Labor and culture', summary: 'Conversation is clustering around employment, culture and workplace conditions.', keywords: ['labor', 'workers', 'culture'] },
+  { label: 'Product momentum', summary: 'Signals indicate rising discussion around product launches and category momentum.', keywords: ['product', 'launch', 'demand'] }
+];
+
+function startAttentionSignalLayer() {
+  if (attentionScanTimer) clearInterval(attentionScanTimer);
+  if (floatingCaptionTimer) clearInterval(floatingCaptionTimer);
+
+  console.log('[Glovety] startAttentionSignalLayer. company planets:', companyPlanetMeshes.length);
+  addObservationLog(`Attention scan started. Companies loaded: ${companyPlanetMeshes.length}.`);
+
+  // StackBlitz Consoleから手動実行できるようにする
+  window.__forceAttentionScan = performAttentionScan;
+  window.__signalParticles = signalParticles;
+
+  performAttentionScan();
+
+  attentionScanTimer = setInterval(() => {
+    performAttentionScan();
+  }, ATTENTION_SCAN_INTERVAL_MS);
+
+  floatingCaptionTimer = setInterval(() => {
+    spawnRandomFloatingCaption();
+  }, FLOATING_CAPTION_INTERVAL_MS);
+}
+
+function performAttentionScan() {
+  const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
+  console.log('[Glovety] performAttentionScan candidates:', candidates.length);
+
+  if (candidates.length === 0) {
+    addObservationLog('Attention scan skipped: no company planets loaded.');
+    return;
+  }
+
+  const planet = pickRandom(candidates);
+  markLatestObservedPlanet(planet);
+
+  const signal = buildMockSignalForPlanet(planet);
+
+  spawnSNSOrbitParticles(planet, signal.snsItems);
+  spawnNewsCurlParticles(planet, signal.newsItems);
+  enforceSignalParticleLimit();
+
+  window.__signalParticlesCount = signalParticles.length;
+
+  addObservationLog(`${planet.userData.name} signal scan: ${signal.snsItems.length} SNS / ${signal.newsItems.length} News particles released.`);
+  console.log('[Glovety] scan released:', planet.userData.name, {
+    sns: signal.snsItems.length,
+    news: signal.newsItems.length,
+    totalSignalParticles: signalParticles.length
+  });
+}
+
+function buildMockSignalForPlanet(planet) {
+  const name = planet.userData.name;
+  const gravity = planet.userData.gravity || 0;
+
+  // Dense mock signal so the effect is visible before real SNS/news APIs are connected.
+  const snsCount = THREE.MathUtils.clamp(Math.round(10 + gravity * 2.0 + Math.random() * 9), 10, 32);
+  const newsCount = THREE.MathUtils.clamp(Math.round(2 + gravity * 0.5 + Math.random() * 3), 2, 8);
+
+  const snsItems = Array.from({ length: snsCount }, (_, index) => {
+    const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
+    return {
+      kind: 'sns',
+      title: `${topic.label} discussion`,
+      topicLabel: topic.label,
+      summary: topic.summary,
+      source: 'SNS Signal',
+      publishedAt: `${Math.max(1, Math.round(Math.random() * 58))}m ago`,
+      url: `https://x.com/search?q=${encodeURIComponent(`${name} ${topic.keywords[0]}`)}&src=typed_query`,
+      weight: 1 + Math.random(),
+      index
+    };
+  });
+
+  const newsItems = Array.from({ length: newsCount }, (_, index) => {
+    const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
+    return {
+      kind: 'news',
+      title: `${topic.label} coverage`,
+      topicLabel: topic.label,
+      summary: topic.summary,
+      source: 'News Signal',
+      publishedAt: `${Math.max(1, Math.round(Math.random() * 24))}h ago`,
+      url: `https://www.google.com/search?tbm=nws&q=${encodeURIComponent(`${name} ${topic.keywords[0]}`)}`,
+      weight: 1.4 + Math.random() * 1.2,
+      index
+    };
+  });
+
+  return { snsItems, newsItems };
+}
+
+function spawnSNSOrbitParticles(planet, items) {
+  items.forEach((item) => {
+    const radius = planet.userData.radius || 1;
+    const finalOrbitRadius = Math.max(4.2, radius * (4.8 + Math.random() * 3.8));
+    const initialOrbitRadius = finalOrbitRadius * (2.2 + Math.random() * 1.15);
+    const material = new THREE.SpriteMaterial({
+      map: signalParticleTexture,
+      color: new THREE.Color(0x9fe5ff),
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      alphaTest: 0.06,
+      depthTest: false,
+      depthWrite: false
+    });
+
+    const particle = new THREE.Sprite(material);
+    const particleSize = 1.25 + Math.random() * 0.65;
+    particle.scale.set(particleSize, particleSize, 1);
+    particle.position.copy(planet.position);
+    particle.userData = {
+      isSignalParticle: true,
+      kind: 'sns',
+      mode: 'orbit',
+      targetPlanet: planet,
+      bornAt: performance.now(),
+      maxAge: SNS_PARTICLE_MAX_AGE_MS * (0.75 + Math.random() * 0.5),
+      fadeInMs: 1400,
+      finalOrbitRadius,
+      initialOrbitRadius,
+      orbitRadius: initialOrbitRadius,
+      orbitSpeed: 0.010 + Math.random() * 0.012,
+      inwardSpeed: 0.010 + Math.random() * 0.012,
+      orbitAngle: Math.random() * Math.PI * 2,
+      orbitTiltX: Math.random() * Math.PI,
+      orbitTiltZ: Math.random() * Math.PI,
+      phase: Math.random() * Math.PI * 2,
+      baseOpacity: 0.58 + Math.random() * 0.28,
+      url: item.url,
+      title: item.title,
+      topicLabel: item.topicLabel,
+      summary: item.summary,
+      source: item.source,
+      publishedAt: item.publishedAt,
+      createdOrder: performance.now() + Math.random(),
+      baseScale: particleSize,
+      hitRadiusPx: 18,
+      isHovered: false
+    };
+
+    scene.add(particle);
+    signalParticles.push(particle);
+  });
+}
+
+function spawnNewsCurlParticles(planet, items) {
+  items.forEach((item) => {
+    const target = planet.position.clone();
+    const orbitRadius = Math.max(4.8, (planet.userData.radius || 1) * (5.8 + Math.random() * 3.8));
+    const startDirection = randomUnitVector();
+    const startDistance = 140 + Math.random() * 220;
+    const startPosition = target.clone().add(startDirection.clone().multiplyScalar(startDistance));
+    const tangent = randomUnitVector().cross(startDirection).normalize();
+    if (!Number.isFinite(tangent.x) || tangent.lengthSq() < 0.0001) tangent.set(0, 1, 0);
+
+    const material = new THREE.SpriteMaterial({
+      map: signalParticleTexture,
+      color: new THREE.Color(0xffffff),
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      alphaTest: 0.06,
+      depthTest: false,
+      depthWrite: false
+    });
+
+    const particle = new THREE.Sprite(material);
+    const particleSize = 1.8 + Math.random() * 0.9;
+    particle.scale.set(particleSize, particleSize, 1);
+    particle.position.copy(startPosition);
+    particle.userData = {
+      isSignalParticle: true,
+      kind: 'news',
+      mode: 'incoming',
+      targetPlanet: planet,
+      bornAt: performance.now(),
+      maxAge: NEWS_PARTICLE_MAX_AGE_MS * (0.82 + Math.random() * 0.36),
+      startPosition,
+      startDirection,
+      tangent,
+      orbitRadius,
+      orbitAngle: Math.random() * Math.PI * 2,
+      curlTurns: 1.35 + Math.random() * 0.8,
+      phase: Math.random() * Math.PI * 2,
+      baseOpacity: 0.74 + Math.random() * 0.24,
+      hasCaptioned: false,
+      url: item.url,
+      title: item.title,
+      topicLabel: item.topicLabel,
+      summary: item.summary,
+      source: item.source,
+      publishedAt: item.publishedAt,
+      createdOrder: performance.now() + Math.random(),
+      baseScale: particleSize,
+      hitRadiusPx: 20,
+      isHovered: false
+    };
+
+    scene.add(particle);
+    signalParticles.push(particle);
+  });
+}
+
+function updateSignalParticles(now) {
+  for (let i = signalParticles.length - 1; i >= 0; i--) {
+    const particle = signalParticles[i];
+    const data = particle.userData;
+    const age = now - data.bornAt;
+    const progress = THREE.MathUtils.clamp(age / data.maxAge, 0, 1);
+
+    if (progress >= 1) {
+      removeSignalParticleAtIndex(i);
+      continue;
+    }
+
+    if (data.kind === 'sns') {
+      updateSNSOrbitParticle(particle, data, age, progress);
+    } else if (data.kind === 'news') {
+      updateNewsCurlParticle(particle, data, age, progress);
+    }
+  }
+}
+
+function applySignalParticleVisualState(particle, data, fallbackScale = 2.0) {
+  const hoverScale = data.isHovered ? 1.85 : 1.0;
+  const finalScale = (data.baseScale || fallbackScale) * hoverScale;
+  particle.scale.set(finalScale, finalScale, 1);
+
+  if (data.isHovered && particle.material) {
+    particle.material.opacity = Math.max(particle.material.opacity || 0, 0.96);
+  }
+}
+
+function updateSNSOrbitParticle(particle, data, age, progress) {
+  const planet = data.targetPlanet;
+  if (!planet) return;
+
+  data.orbitAngle += data.orbitSpeed;
+
+  // 外側から内側へ短時間で収れんし、その後は惑星近傍を衛星軌道で周回する
+  const convergence = THREE.MathUtils.clamp(age / 6500, 0, 1);
+  const easedConvergence = easeOutCubic(convergence);
+  data.orbitRadius = THREE.MathUtils.lerp(
+    data.initialOrbitRadius || data.orbitRadius,
+    data.finalOrbitRadius || data.orbitRadius,
+    easedConvergence
+  );
+
+  // 渦巻き感：収れん中だけ半径を波打たせる
+  const swirl = 1 + (1 - easedConvergence) * 0.46 * Math.sin(age * 0.010 + data.phase);
+  const activeRadius = data.orbitRadius * swirl;
+
+  const x = Math.cos(data.orbitAngle) * activeRadius;
+  const z = Math.sin(data.orbitAngle) * activeRadius;
+  const y = Math.sin(data.orbitAngle * 1.38 + data.phase) * activeRadius * 0.16;
+
+  const offset = new THREE.Vector3(x, y, z);
+  offset.applyAxisAngle(new THREE.Vector3(1, 0, 0), data.orbitTiltX);
+  offset.applyAxisAngle(new THREE.Vector3(0, 0, 1), data.orbitTiltZ);
+
+  particle.position.copy(planet.position).add(offset);
+
+  const fadeIn = THREE.MathUtils.clamp(age / data.fadeInMs, 0, 1);
+  const fadeOut = progress > 0.76 ? 1 - (progress - 0.76) / 0.24 : 1;
+  const pulse = 0.76 + 0.24 * Math.sin(performance.now() * 0.005 + data.phase);
+  particle.material.opacity = Math.max(0, data.baseOpacity * fadeIn * fadeOut * pulse);
+  applySignalParticleVisualState(particle, data, 1.5);
+}
+
+function updateNewsCurlParticle(particle, data, age, progress) {
+  const planet = data.targetPlanet;
+  if (!planet) return;
+
+  const target = planet.position.clone();
+  const incomingEnd = target.clone().add(data.startDirection.clone().multiplyScalar(data.orbitRadius * 1.18));
+
+  if (progress < 0.46) {
+    const t = easeOutCubic(progress / 0.46);
+    const curveLift = Math.sin(t * Math.PI) * Math.max(10, data.orbitRadius * 1.45);
+    const curved = new THREE.Vector3().lerpVectors(data.startPosition, incomingEnd, t)
+      .add(data.tangent.clone().multiplyScalar(curveLift));
+    particle.position.copy(curved);
+    particle.material.opacity = data.baseOpacity * Math.min(1, progress / 0.10);
+    applySignalParticleVisualState(particle, data, 2.0);
+  } else {
+    const curlT = (progress - 0.46) / 0.54;
+    const angle = data.orbitAngle + curlT * Math.PI * 2 * data.curlTurns;
+
+    // 惑星近くでクルリンしながら小さく収れんし、儚く消える
+    const radius = data.orbitRadius * Math.max(0.16, 1.18 - curlT * 0.96);
+    const offset = new THREE.Vector3(
+      Math.cos(angle) * radius,
+      Math.sin(angle * 1.4 + data.phase) * radius * 0.16,
+      Math.sin(angle) * radius
+    );
+    offset.applyAxisAngle(data.tangent, 0.72);
+    particle.position.copy(target).add(offset);
+
+    const fade = Math.max(0, 1 - curlT * 1.08);
+    const flash = 0.74 + 0.26 * Math.sin(performance.now() * 0.017 + data.phase);
+    particle.material.opacity = data.baseOpacity * fade * flash;
+    applySignalParticleVisualState(particle, data, 2.0);
+
+    if (!data.hasCaptioned && curlT > 0.14) {
+      data.hasCaptioned = true;
+      createFloatingSignalCaption(particle, true);
+    }
+  }
+}
+
+function removeSignalParticleAtIndex(index) {
+  const particle = signalParticles[index];
+  if (!particle) return;
+  scene.remove(particle);
+  if (particle.material) particle.material.dispose();
+  signalParticles.splice(index, 1);
+}
+
+function enforceSignalParticleLimit() {
+  while (signalParticles.length > MAX_SIGNAL_PARTICLES) {
+    let oldestIndex = 0;
+    let oldestOrder = Infinity;
+    signalParticles.forEach((particle, index) => {
+      const order = particle.userData.createdOrder || 0;
+      if (order < oldestOrder) {
+        oldestOrder = order;
+        oldestIndex = index;
+      }
+    });
+    removeSignalParticleAtIndex(oldestIndex);
+  }
+}
+
+function getSignalHit(clientX, clientY) {
+  const activeParticles = signalParticles.filter((particle) => particle.material && particle.material.opacity > 0.04);
+
+  // Prefer screen-space hit testing for small glow sprites.
+  // This keeps the visual particle small while making it easier to click.
+  if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
+    let bestParticle = null;
+    let bestDistance = Infinity;
+
+    for (const particle of activeParticles) {
+      const screen = toScreenPosition(particle.position);
+      if (!screen) continue;
+
+      const hitRadius = particle.userData.hitRadiusPx || SIGNAL_HIT_RADIUS_PX;
+      const dx = screen.x - clientX;
+      const dy = screen.y - clientY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance <= hitRadius && distance < bestDistance) {
+        bestDistance = distance;
+        bestParticle = particle;
+      }
+    }
+
+    return bestParticle;
+  }
+
+  // Fallback for older calls.
+  const hits = raycaster.intersectObjects(activeParticles, false);
+  return hits.length > 0 ? hits[0].object : null;
+}
+
+function handleSignalPointerMove(event) {
+  const clickedElement = event.target;
+  if (clickedElement.closest && (clickedElement.closest('#ui-layer') || clickedElement.closest('#infoPanel'))) {
+    if (hoveredSignalParticle) hoveredSignalParticle.userData.isHovered = false;
+    hoveredSignalParticle = null;
+    hideSignalTooltip();
+    document.body.style.cursor = '';
+    return;
+  }
+
+  const particle = getSignalHit(event.clientX, event.clientY);
+
+  if (hoveredSignalParticle && hoveredSignalParticle !== particle) {
+    hoveredSignalParticle.userData.isHovered = false;
+  }
+
+  hoveredSignalParticle = particle || null;
+
+  if (!particle) {
+    hideSignalTooltip();
+    document.body.style.cursor = '';
+    return;
+  }
+
+  particle.userData.isHovered = true;
+  showSignalTooltip(event, particle);
+  document.body.style.cursor = 'pointer';
+}
+
+function showSignalTooltip(event, particle) {
+  const tooltip = document.getElementById('signal-tooltip');
+  if (!tooltip) return;
+  const data = particle.userData;
+  const kindLabel = data.kind === 'news' ? 'NEWS SIGNAL' : 'SNS SIGNAL';
+  tooltip.innerHTML = `
+    <div class="signal-tooltip-kicker">${kindLabel}</div>
+    <div class="signal-tooltip-title">${escapeHTML(data.title || data.topicLabel || 'Observed signal')}</div>
+    <div>${escapeHTML(data.summary || '')}</div>
+    <div class="signal-tooltip-meta">${escapeHTML(data.source || '')}${data.publishedAt ? ` / ${escapeHTML(data.publishedAt)}` : ''}</div>
+    <div class="signal-tooltip-hint">Click to open source</div>
+  `;
+  tooltip.style.left = `${event.clientX + 14}px`;
+  tooltip.style.top = `${event.clientY + 14}px`;
+  tooltip.style.display = 'block';
+}
+
+function hideSignalTooltip() {
+  const tooltip = document.getElementById('signal-tooltip');
+  if (tooltip) tooltip.style.display = 'none';
+}
+
+function spawnRandomFloatingCaption() {
+  const candidates = signalParticles.filter((particle) => {
+    const data = particle.userData;
+    if (!data || !particle.material || particle.material.opacity < 0.12) return false;
+    const age = performance.now() - data.bornAt;
+    return age > 1000 && age < data.maxAge * 0.82;
+  });
+
+  if (candidates.length === 0) return;
+  const particle = pickRandom(candidates);
+  createFloatingSignalCaption(particle, false);
+}
+
+function makeSignalTextSprite(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const safeText = String(text || 'Observed signal').length > 62
+    ? `${String(text || 'Observed signal').slice(0, 59)}...`
+    : String(text || 'Observed signal');
+
+  ctx.font = '500 64px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(2, 4, 10, 0.76)';
+  ctx.fillStyle = 'rgba(236, 248, 255, 0.96)';
+  ctx.shadowColor = 'rgba(120, 220, 255, 0.42)';
+  ctx.shadowBlur = 18;
+
+  ctx.strokeText(safeText, 38, canvas.height / 2);
+  ctx.fillText(safeText, 38, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const sprite = new THREE.Sprite(material);
+  const height = 7.2;
+  const aspect = canvas.width / canvas.height;
+  sprite.scale.set(height * aspect, height, 1);
+  sprite.renderOrder = 46;
+
+  return sprite;
+}
+
+function createSignalCaptionTrail(sourcePosition, textPosition) {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    sourcePosition.clone(),
+    textPosition.clone()
+  ]);
+
+  const material = new THREE.LineBasicMaterial({
+    color: 0xbdefff,
+    transparent: true,
+    opacity: 0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const line = new THREE.Line(geometry, material);
+  line.renderOrder = 45;
+  return line;
+}
+
+function createFloatingSignalCaption(particle, preferSummary = false) {
+  const data = particle.userData;
+  if (!data) return;
+
+  const text = preferSummary
+    ? (data.summary || data.topicLabel || data.title)
+    : (data.topicLabel || data.summary || data.title || 'Observed signal');
+
+  if (!text) return;
+
+  const sprite = makeSignalTextSprite(text);
+
+  const towardCamera = camera.position.clone().sub(particle.position).normalize();
+  let side = new THREE.Vector3().crossVectors(towardCamera, new THREE.Vector3(0, 1, 0)).normalize();
+  if (!Number.isFinite(side.x) || side.lengthSq() < 0.0001) {
+    side = new THREE.Vector3(1, 0, 0);
+  }
+
+  const sideDirection = Math.random() > 0.5 ? 1 : -1;
+  const sideVector = side.multiplyScalar(sideDirection);
+  const upVector = new THREE.Vector3(0, 1, 0);
+  const initialTextPosition = particle.position.clone()
+    .add(upVector.clone().multiplyScalar(2.0))
+    .add(sideVector.clone().multiplyScalar(2.7));
+
+  sprite.position.copy(initialTextPosition);
+  const trail = createSignalCaptionTrail(particle.position, initialTextPosition);
+
+  scene.add(trail);
+  scene.add(sprite);
+
+  floatingSignalTexts.push({
+    sprite,
+    trail,
+    sourceParticle: particle,
+    anchor: particle.position.clone(),
+    bornAt: performance.now(),
+    maxAge: 2600 + Math.random() * 900,
+    upVector,
+    sideVector,
+    sourceOffset: new THREE.Vector3(0, 0, 0),
+    driftBase: 2.7 + Math.random() * 1.6,
+    liftBase: 1.8 + Math.random() * 1.1
+  });
+}
+
+function updateFloatingSignalTexts(now) {
+  for (let i = floatingSignalTexts.length - 1; i >= 0; i--) {
+    const item = floatingSignalTexts[i];
+    const age = now - item.bornAt;
+    const progress = THREE.MathUtils.clamp(age / item.maxAge, 0, 1);
+
+    if (progress >= 1) {
+      removeFloatingSignalTextAtIndex(i);
+      continue;
+    }
+
+    const particleIsAlive = item.sourceParticle && item.sourceParticle.parent && item.sourceParticle.material;
+    const sourcePosition = particleIsAlive
+      ? item.sourceParticle.position.clone()
+      : item.anchor.clone();
+
+    const drift = easeOutCubic(progress);
+    const textPosition = sourcePosition.clone()
+      .add(item.upVector.clone().multiplyScalar(item.liftBase + drift * 6.2))
+      .add(item.sideVector.clone().multiplyScalar(item.driftBase + drift * 6.0));
+
+    item.sprite.position.copy(textPosition);
+
+    const positions = item.trail.geometry.attributes.position.array;
+    positions[0] = sourcePosition.x;
+    positions[1] = sourcePosition.y;
+    positions[2] = sourcePosition.z;
+    positions[3] = textPosition.x;
+    positions[4] = textPosition.y - 0.7;
+    positions[5] = textPosition.z;
+    item.trail.geometry.attributes.position.needsUpdate = true;
+
+    const fadeIn = THREE.MathUtils.clamp(age / 180, 0, 1);
+    const fadeOut = progress > 0.70 ? 1 - (progress - 0.70) / 0.30 : 1;
+    const alpha = Math.max(0, fadeIn * fadeOut);
+
+    item.sprite.material.opacity = alpha;
+    item.trail.material.opacity = alpha * 0.62;
+  }
+}
+
+function removeFloatingSignalTextAtIndex(index) {
+  const item = floatingSignalTexts[index];
+  if (!item) return;
+
+  scene.remove(item.sprite);
+  scene.remove(item.trail);
+
+  if (item.sprite.material?.map) item.sprite.material.map.dispose();
+  if (item.sprite.material) item.sprite.material.dispose();
+  if (item.trail.geometry) item.trail.geometry.dispose();
+  if (item.trail.material) item.trail.material.dispose();
+
+  floatingSignalTexts.splice(index, 1);
+}
+
+function toScreenPosition(position) {
+  const vector = position.clone().project(camera);
+  if (vector.z < -1 || vector.z > 1) return null;
+  return {
+    x: (vector.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-vector.y * 0.5 + 0.5) * window.innerHeight
+  };
+}
+
+function addObservationLog(message) {
+  const logList = document.getElementById('observation-log-list');
+  if (!logList) return;
+  const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const row = document.createElement('div');
+  row.className = 'observation-log-row';
+  row.innerHTML = `<span class="observation-log-time">${time}</span>${escapeHTML(message)}`;
+  logList.prepend(row);
+  while (logList.children.length > 8) {
+    logList.lastElementChild.remove();
+  }
+}
+
+function randomUnitVector() {
+  const theta = Math.random() * Math.PI * 2;
+  const z = Math.random() * 2 - 1;
+  const r = Math.sqrt(1 - z * z);
+  return new THREE.Vector3(r * Math.cos(theta), z, r * Math.sin(theta)).normalize();
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
 // ======================================================
 // Interactions
 // ======================================================
@@ -760,12 +1468,26 @@ function addSpiralRSSGalaxy(center, armCount = 8, particleCount = 5600, radius =
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
+window.addEventListener('pointermove', handleSignalPointerMove);
+
 window.addEventListener('pointerdown', (event) => {
   const clickedElement = event.target;
   if (clickedElement.closest && (clickedElement.closest('#ui-layer') || clickedElement.closest('#infoPanel'))) return;
+
   pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
+
+  const signalHit = getSignalHit(event.clientX, event.clientY);
+  if (signalHit) {
+    const url = signalHit.userData.url;
+    if (url) {
+      addObservationLog(`Opened ${signalHit.userData.kind.toUpperCase()} signal: ${signalHit.userData.title || signalHit.userData.topicLabel}`);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+    return;
+  }
+
   const intersects = raycaster.intersectObjects(planetMeshes);
   if (intersects.length > 0 && intersects[0].object.name) showCompanyInfo(intersects[0].object);
 });
@@ -924,8 +1646,132 @@ function renderRankingPanel(limit = 8) {
   });
 }
 
+function markLatestObservedPlanet(planet) {
+  if (!planet) return;
+
+  latestObservedPlanet = planet;
+
+  // StackBlitz Consoleで確認できるように外へ出す
+  window.__latestObservedPlanet = planet;
+  window.__latestObservedPlanetName = planet.userData?.name;
+
+  // 最新観測企業を画面上でも強く発光させる
+  highlightObservedPlanet(planet);
+
+  const telescopeButton = document.getElementById('telescope-button');
+  if (telescopeButton) {
+    telescopeButton.classList.add('telescope-alert');
+    telescopeButton.title = `Focus latest observed company: ${planet.userData.name}`;
+  }
+
+  console.log('[Glovety] Latest observed planet:', planet.userData.name);
+}
+
+function clearObservedPlanetGlow() {
+  while (attentionFocusGroup.children.length > 0) {
+    const child = attentionFocusGroup.children.pop();
+    attentionFocusGroup.remove(child);
+    child.traverse?.((node) => {
+      if (node.geometry) node.geometry.dispose();
+      if (node.material) {
+        if (Array.isArray(node.material)) node.material.forEach((m) => m.dispose?.());
+        else node.material.dispose?.();
+      }
+    });
+  }
+  activeObservedGlow = null;
+}
+
+function highlightObservedPlanet(planet) {
+  clearObservedPlanetGlow();
+  if (!planet) return;
+
+  const radius = planet.userData.radius || 1;
+  const haloSize = Math.max(26, radius * 46);
+  const ringRadius = Math.max(5.5, radius * 8.5);
+
+  const group = new THREE.Group();
+  group.position.copy(planet.position);
+  group.userData = { targetPlanet: planet, baseHaloSize: haloSize };
+
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: compareGlowTexture,
+    color: 0x9be7ff,
+    transparent: true,
+    opacity: 0.72,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  halo.scale.set(haloSize, haloSize, 1);
+  group.add(halo);
+
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9be7ff,
+    transparent: true,
+    opacity: 0.58,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+
+  const ringA = new THREE.Mesh(new THREE.TorusGeometry(ringRadius, 0.10, 8, 96), ringMaterial.clone());
+  ringA.rotation.x = Math.PI / 2.6;
+  group.add(ringA);
+
+  const ringB = new THREE.Mesh(new THREE.TorusGeometry(ringRadius * 1.18, 0.07, 8, 96), ringMaterial.clone());
+  ringB.rotation.y = Math.PI / 2.9;
+  ringB.material.opacity = 0.32;
+  group.add(ringB);
+
+  const beacon = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: signalParticleTexture,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  const beaconSize = Math.max(4.5, radius * 7.5);
+  beacon.scale.set(beaconSize, beaconSize, 1);
+  group.add(beacon);
+
+  attentionFocusGroup.add(group);
+  activeObservedGlow = { group, halo, beacon, rings: [ringA, ringB], startedAt: performance.now() };
+}
+
+function updateObservedPlanetGlow(now) {
+  if (!activeObservedGlow) return;
+
+  const { group, halo, beacon, rings, startedAt } = activeObservedGlow;
+  const targetPlanet = group.userData.targetPlanet;
+  if (!targetPlanet) return;
+
+  group.position.copy(targetPlanet.position);
+
+  const pulse = 0.5 + 0.5 * Math.sin((now - startedAt) * 0.0052);
+  const slowPulse = 0.5 + 0.5 * Math.sin((now - startedAt) * 0.0020);
+  const haloSize = group.userData.baseHaloSize * (0.84 + pulse * 0.30);
+  halo.scale.set(haloSize, haloSize, 1);
+  halo.material.opacity = 0.30 + pulse * 0.50;
+  beacon.material.opacity = 0.58 + pulse * 0.40;
+
+  rings[0].rotation.z += 0.020;
+  rings[1].rotation.x += 0.012;
+  rings[1].rotation.z -= 0.010;
+  rings[0].material.opacity = 0.30 + slowPulse * 0.36;
+  rings[1].material.opacity = 0.18 + pulse * 0.26;
+}
+
+function clearTelescopeAlert() {
+  const telescopeButton = document.getElementById('telescope-button');
+  if (!telescopeButton) return;
+
+  telescopeButton.classList.remove('telescope-alert');
+}
+
 function setupNavigationButtons() {
   const observationButton = document.getElementById('observation-button');
+  const telescopeButton = document.getElementById('telescope-button');
   const compassButton = document.getElementById('compass-button');
 
   if (observationButton) {
@@ -940,6 +1786,27 @@ function setupNavigationButtons() {
         This point represents the general observation center in the semantic space.
       `);
     });
+  }
+
+  if (telescopeButton) {
+    const handleTelescopeFocus = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const targetPlanet = latestObservedPlanet || window.__latestObservedPlanet;
+      if (!targetPlanet) {
+        addObservationLog('Telescope is waiting for the first attention scan.');
+        return;
+      }
+
+      focusOnPlanet(targetPlanet);
+      showCompanyInfo(targetPlanet);
+      clearTelescopeAlert();
+      addObservationLog(`Telescope focused on latest observed company: ${targetPlanet.userData.name}.`);
+    };
+
+    telescopeButton.addEventListener('click', handleTelescopeFocus);
+    telescopeButton.addEventListener('pointerdown', handleTelescopeFocus);
   }
 
   if (compassButton) {
@@ -1059,16 +1926,7 @@ function runCompare() {
   const natureDiff = rawA && rawB ? Math.abs(rawA.z - rawB.z) : 0;
   const economicDiff = rawA && rawB ? Math.abs(rawA.y - rawB.y) : 0;
 
-  showCompareInfo({
-    planetA,
-    planetB,
-    hneDistance,
-    worldDistance,
-    gravityDiff,
-    humanDiff,
-    natureDiff,
-    economicDiff
-  });
+  showCompareInfo({ planetA, planetB, hneDistance, worldDistance, gravityDiff, humanDiff, natureDiff, economicDiff });
 
   if (miniResult) {
     miniResult.style.display = 'block';
@@ -1104,7 +1962,10 @@ function showCompareInfo({ planetA, planetB, hneDistance, worldDistance, gravity
     Economic Difference: ${economicDiff.toFixed(3)}<br><br>
     ${planetA.userData.name}: g=${planetA.userData.gravity.toFixed(2)}<br>
     ${planetB.userData.name}: g=${planetB.userData.gravity.toFixed(2)}<br><br>
-    <button id="clear-compare-button" type="button" class="compare-clear-button">Clear Compare</button>
+
+    <button id="clear-compare-button" type="button" class="compare-clear-button">
+      Clear Compare
+    </button>
   `);
 }
 
@@ -1138,6 +1999,9 @@ function animate() {
   scene.rotation.y += 0.000001;
   updateCameraTween();
   updateCompareVisual(now);
+  updateSignalParticles(now);
+  updateFloatingSignalTexts(now);
+  updateObservedPlanetGlow(now);
   controls.update();
 
   for (let i = shootingStars.length - 1; i >= 0; i--) {
