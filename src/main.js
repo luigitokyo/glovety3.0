@@ -24,6 +24,13 @@ const NEWS_PARTICLE_MAX_AGE_MS = 55000;
 const FLOATING_CAPTION_INTERVAL_MS = 4500;
 const MAX_SIGNAL_PARTICLES = 700;
 
+// API connection point.
+// Frontend calls this endpoint; backend should call X / News / LLM services securely.
+// If this endpoint is not available, the map automatically falls back to mock signals.
+const ATTENTION_SIGNALS_API_ENDPOINT = '/api/attention-signals';
+const ATTENTION_API_TIMEOUT_MS = 6500;
+const USE_ATTENTION_API = true;
+
 ensureUI();
 
 function ensureUI() {
@@ -283,6 +290,7 @@ let activeCompareVisual = null;
 let activeObservedGlow = null;
 let gravityTickerTimer = null;
 let attentionScanTimer = null;
+let isAttentionScanRunning = false;
 let latestObservedPlanet = null;
 let floatingCaptionTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
@@ -830,13 +838,13 @@ function startAttentionSignalLayer() {
   addObservationLog(`Attention scan started. Companies loaded: ${companyPlanetMeshes.length}.`);
 
   // StackBlitz Consoleから手動実行できるようにする
-  window.__forceAttentionScan = performAttentionScan;
+  window.__forceAttentionScan = () => performAttentionScan({ force: true });
   window.__signalParticles = signalParticles;
 
-  performAttentionScan();
+  void performAttentionScan({ force: true });
 
   attentionScanTimer = setInterval(() => {
-    performAttentionScan();
+    void performAttentionScan();
   }, ATTENTION_SCAN_INTERVAL_MS);
 
   floatingCaptionTimer = setInterval(() => {
@@ -844,32 +852,161 @@ function startAttentionSignalLayer() {
   }, FLOATING_CAPTION_INTERVAL_MS);
 }
 
-function performAttentionScan() {
-  const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
-  console.log('[Glovety] performAttentionScan candidates:', candidates.length);
+async function performAttentionScan(options = {}) {
+  const { force = false } = options;
 
-  if (candidates.length === 0) {
-    addObservationLog('Attention scan skipped: no company planets loaded.');
+  if (isAttentionScanRunning && !force) {
+    console.log('[Glovety] Attention scan skipped: previous scan still running.');
     return;
   }
 
-  const planet = pickRandom(candidates);
-  markLatestObservedPlanet(planet);
+  isAttentionScanRunning = true;
+  window.__attentionScanRunning = true;
 
-  const signal = buildMockSignalForPlanet(planet);
+  try {
+    const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
+    console.log('[Glovety] performAttentionScan candidates:', candidates.length);
 
-  spawnSNSOrbitParticles(planet, signal.snsItems);
-  spawnNewsCurlParticles(planet, signal.newsItems);
-  enforceSignalParticleLimit();
+    if (candidates.length === 0) {
+      addObservationLog('Attention scan skipped: no company planets loaded.');
+      return;
+    }
 
-  window.__signalParticlesCount = signalParticles.length;
+    const planet = pickRandom(candidates);
+    markLatestObservedPlanet(planet);
 
-  addObservationLog(`${planet.userData.name} signal scan: ${signal.snsItems.length} SNS / ${signal.newsItems.length} News particles released.`);
-  console.log('[Glovety] scan released:', planet.userData.name, {
-    sns: signal.snsItems.length,
-    news: signal.newsItems.length,
-    totalSignalParticles: signalParticles.length
+    let signal;
+    let signalSource = 'api';
+
+    try {
+      signal = await fetchAttentionSignalsForPlanet(planet);
+      signalSource = signal.__source || 'api';
+    } catch (error) {
+      console.warn('[Glovety] Attention API failed. Falling back to mock.', error);
+      signal = buildMockSignalForPlanet(planet);
+      signalSource = 'mock';
+    }
+
+    const snsItems = Array.isArray(signal?.snsItems) ? signal.snsItems : [];
+    const newsItems = Array.isArray(signal?.newsItems) ? signal.newsItems : [];
+
+    spawnSNSOrbitParticles(planet, snsItems);
+    spawnNewsCurlParticles(planet, newsItems);
+    enforceSignalParticleLimit();
+
+    window.__signalParticlesCount = signalParticles.length;
+    window.__lastAttentionSignal = signal;
+    window.__lastAttentionSignalSource = signalSource;
+
+    addObservationLog(`${planet.userData.name} ${signalSource.toUpperCase()} signal scan: ${snsItems.length} SNS / ${newsItems.length} News particles released.`);
+    console.log('[Glovety] scan released:', planet.userData.name, {
+      source: signalSource,
+      sns: snsItems.length,
+      news: newsItems.length,
+      totalSignalParticles: signalParticles.length
+    });
+  } finally {
+    isAttentionScanRunning = false;
+    window.__attentionScanRunning = false;
+  }
+}
+
+async function fetchAttentionSignalsForPlanet(planet) {
+  if (!USE_ATTENTION_API) {
+    throw new Error('Attention API disabled.');
+  }
+
+  const raw = planet.userData.rawPosition;
+  const params = new URLSearchParams({
+    company: planet.userData.name,
+    gravity: String(planet.userData.gravity ?? 0)
   });
+
+  if (raw) {
+    params.set('h', String(raw.x));
+    params.set('n', String(raw.z));
+    params.set('e', String(raw.y));
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ATTENTION_API_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${ATTENTION_SIGNALS_API_ENDPOINT}?${params.toString()}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Attention API failed: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    return normalizeAttentionSignalResponse(payload, planet);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeAttentionSignalResponse(payload, planet) {
+  const snsRaw = Array.isArray(payload?.snsItems)
+    ? payload.snsItems
+    : Array.isArray(payload?.sns)
+      ? payload.sns
+      : [];
+
+  const newsRaw = Array.isArray(payload?.newsItems)
+    ? payload.newsItems
+    : Array.isArray(payload?.news)
+      ? payload.news
+      : [];
+
+  const snsItems = snsRaw
+    .map((item, index) => normalizeSignalItem(item, 'sns', planet, index))
+    .filter(Boolean);
+
+  const newsItems = newsRaw
+    .map((item, index) => normalizeSignalItem(item, 'news', planet, index))
+    .filter(Boolean);
+
+  if (snsItems.length === 0 && newsItems.length === 0) {
+    throw new Error('Attention API returned no usable signal items.');
+  }
+
+  return {
+    company: payload?.company || planet.userData.name,
+    updatedAt: payload?.updatedAt || new Date().toISOString(),
+    snsItems,
+    newsItems,
+    __source: 'api'
+  };
+}
+
+function normalizeSignalItem(item, kind, planet, index) {
+  if (!item || typeof item !== 'object') return null;
+
+  const fallbackTopic = kind === 'news' ? 'News coverage' : 'SNS discussion';
+  const topicLabel = item.topicLabel || item.topic || item.label || fallbackTopic;
+  const title = item.title || item.signalTitle || `${topicLabel}`;
+  const summary = item.summary || item.shortSummary || item.description || `${topicLabel} around ${planet.userData.name}.`;
+  const source = item.source || item.sourceName || (kind === 'news' ? 'News Signal' : 'SNS Signal');
+  const publishedAt = item.publishedAt || item.age || item.timeAgo || '';
+  const url = item.url || item.link || item.sourceUrl || '';
+  const weight = Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1;
+
+  return {
+    kind,
+    title: String(title),
+    topicLabel: String(topicLabel),
+    summary: String(summary),
+    source: String(source),
+    publishedAt: String(publishedAt),
+    url: String(url),
+    weight,
+    index
+  };
 }
 
 function buildMockSignalForPlanet(planet) {
