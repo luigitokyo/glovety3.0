@@ -15,7 +15,7 @@
  *   {
  *     company,
  *     updatedAt,
- *     snsItems: [],
+ *     searchItems: [...],
  *     newsItems: [...]
  *   }
  */
@@ -42,7 +42,7 @@ if ($companyParam === '') {
     'error' => 'company is required',
     'company' => '',
     'updatedAt' => date(DATE_ATOM),
-    'snsItems' => [],
+    'searchItems' => [],
     'newsItems' => []
   ], 400);
 }
@@ -54,7 +54,7 @@ if ($csvPath === null) {
     'error' => 'companies_002.csv not found',
     'company' => $companyParam,
     'updatedAt' => date(DATE_ATOM),
-    'snsItems' => [],
+    'searchItems' => [],
     'newsItems' => [],
     'debug' => $debug ? [
       'checkedPaths' => getCandidateCsvPaths()
@@ -70,7 +70,7 @@ if ($company === null) {
     'error' => 'company not found in companies_002.csv',
     'company' => $companyParam,
     'updatedAt' => date(DATE_ATOM),
-    'snsItems' => [],
+    'searchItems' => [],
     'newsItems' => []
   ], 404);
 }
@@ -92,57 +92,18 @@ if ($cached !== null) {
 
 $searchTerms = buildSearchTerms($company);
 $excludeTerms = buildExcludeTerms($company);
-$maxItems = (int)($config['RSS_MAX_ITEMS'] ?? $config['NEWS_PAGE_SIZE'] ?? 12);
+$maxNewsItems = (int)($config['RSS_MAX_ITEMS'] ?? $config['NEWS_PAGE_SIZE'] ?? 12);
+$maxSearchItems = (int)($config['SEARCH_RSS_MAX_ITEMS'] ?? 10);
 $lookbackDays = (int)($config['RSS_LOOKBACK_DAYS'] ?? 7);
 
-$rssUrls = buildRssUrls($searchTerms, $lookbackDays, $config);
-$rawArticles = [];
+$newsRssUrls = buildRssUrls($searchTerms, $lookbackDays, $config);
+$searchRssUrls = buildSearchRssUrls($searchTerms, $config);
 
-foreach ($rssUrls as $url) {
-  $xmlText = fetchUrl($url, 8);
-  if ($xmlText === null || $xmlText === '') {
-    continue;
-  }
+$rawArticles = fetchRssItemsFromUrls($newsRssUrls);
+$rawSearchResults = fetchRssItemsFromUrls($searchRssUrls);
 
-  $items = parseRssItems($xmlText);
-  foreach ($items as $item) {
-    $item['rssUrl'] = $url;
-    $rawArticles[] = $item;
-  }
-}
-
-$filtered = [];
-$seen = [];
-
-foreach ($rawArticles as $article) {
-  $title = $article['title'] ?? '';
-  $description = $article['description'] ?? '';
-  $link = $article['url'] ?? '';
-
-  if ($title === '' || $link === '') {
-    continue;
-  }
-
-  if (!isRelevantToCompany($title . ' ' . $description, $searchTerms, $excludeTerms)) {
-    continue;
-  }
-
-  $dedupeKey = sha1(normalizeText($title) . '|' . normalizeUrlForDedupe($link));
-  if (isset($seen[$dedupeKey])) {
-    continue;
-  }
-  $seen[$dedupeKey] = true;
-
-  $filtered[] = $article;
-}
-
-usort($filtered, function ($a, $b) {
-  $ta = strtotime($a['publishedAtIso'] ?? '') ?: 0;
-  $tb = strtotime($b['publishedAtIso'] ?? '') ?: 0;
-  return $tb <=> $ta;
-});
-
-$filtered = array_slice($filtered, 0, $maxItems);
+$filteredNews = filterAndDedupeItems($rawArticles, $searchTerms, $excludeTerms, $maxNewsItems);
+$filteredSearch = filterAndDedupeItems($rawSearchResults, $searchTerms, $excludeTerms, $maxSearchItems);
 
 $newsItems = array_map(function ($article) use ($company) {
   $title = cleanTitle((string)($article['title'] ?? 'News coverage'));
@@ -164,14 +125,37 @@ $newsItems = array_map(function ($article) use ($company) {
     'url' => $url,
     'weight' => calculateWeight($publishedAtIso)
   ];
-}, $filtered);
+}, $filteredNews);
+
+$searchItems = array_map(function ($result) use ($company) {
+  $title = cleanTitle((string)($result['title'] ?? 'Search result'));
+  $description = cleanDescription((string)($result['description'] ?? ''));
+  $source = (string)($result['source'] ?? '');
+  $url = (string)($result['url'] ?? '');
+  $publishedAtIso = (string)($result['publishedAtIso'] ?? '');
+
+  $domain = inferSourceFromUrl($url);
+  $sourceLabel = $source !== '' && $source !== 'RSS News' ? $source : $domain;
+
+  return [
+    'kind' => 'search',
+    'title' => $title !== '' ? $title : 'Search result',
+    'topicLabel' => makeSearchTopicLabel($title . ' ' . $description . ' ' . $url),
+    'summary' => makeSearchSummary($description, $title, $company['name'], $domain),
+    'source' => $sourceLabel !== '' ? $sourceLabel : 'Search',
+    'publishedAt' => relativeTime($publishedAtIso),
+    'publishedAtIso' => $publishedAtIso,
+    'url' => $url,
+    'weight' => 1.0
+  ];
+}, $filteredSearch);
 
 $response = [
   'company' => $company['name'],
   'updatedAt' => date(DATE_ATOM),
-  'sourceType' => 'rss',
-  'snsItems' => [],     // SNS Orbitは後でX API等に接続。今はNews OrbitをRSSで本物化。
-  'newsItems' => $newsItems
+  'sourceType' => 'rss-search',
+  'searchItems' => array_values(array_filter($searchItems, fn($item) => !empty($item['url']) && (!empty($item['title']) || !empty($item['summary'])))),
+  'newsItems' => array_values(array_filter($newsItems, fn($item) => !empty($item['url']) && (!empty($item['title']) || !empty($item['summary']))))
 ];
 
 if ($debug) {
@@ -182,10 +166,14 @@ if ($debug) {
     'company' => $company,
     'searchTerms' => $searchTerms,
     'excludeTerms' => $excludeTerms,
-    'rssUrls' => $rssUrls,
+    'newsRssUrls' => $newsRssUrls,
+    'searchRssUrls' => $searchRssUrls,
     'rawArticleCount' => count($rawArticles),
-    'filteredArticleCount' => count($filtered),
-    'maxItems' => $maxItems,
+    'rawSearchCount' => count($rawSearchResults),
+    'filteredNewsCount' => count($filteredNews),
+    'filteredSearchCount' => count($filteredSearch),
+    'maxNewsItems' => $maxNewsItems,
+    'maxSearchItems' => $maxSearchItems,
     'lookbackDays' => $lookbackDays
   ];
 }
@@ -211,6 +199,7 @@ function loadConfig(): array {
   return [
     'CACHE_TTL_SECONDS' => '300',
     'RSS_MAX_ITEMS' => '12',
+    'SEARCH_RSS_MAX_ITEMS' => '10',
     'RSS_LOOKBACK_DAYS' => '7',
     'RSS_LOCALE' => 'US:en'
   ];
@@ -385,6 +374,88 @@ function buildRssUrls(array $searchTerms, int $lookbackDays, array $config): arr
 
   return array_values(array_unique($urls));
 }
+
+function buildSearchRssUrls(array $searchTerms, array $config): array {
+  $safeTerms = array_values(array_filter($searchTerms, fn($term) => trim((string)$term) !== ''));
+  if (count($safeTerms) === 0) {
+    return [];
+  }
+
+  $primary = trim((string)$safeTerms[0]);
+  $query = '"' . str_replace('"', '', $primary) . '"';
+  $encodedQuery = rawurlencode($query);
+
+  // Bing web search RSS. This is used as a lightweight Search Orbit source.
+  // If it fails or returns empty, the frontend simply receives no Search particles.
+  $urls = [
+    "https://www.bing.com/search?q={$encodedQuery}&format=rss&cc=US&setlang=en"
+  ];
+
+  if (!empty($config['EXTRA_SEARCH_RSS_URLS']) && is_array($config['EXTRA_SEARCH_RSS_URLS'])) {
+    foreach ($config['EXTRA_SEARCH_RSS_URLS'] as $extraUrl) {
+      if (is_string($extraUrl) && trim($extraUrl) !== '') {
+        $urls[] = trim($extraUrl);
+      }
+    }
+  }
+
+  return array_values(array_unique($urls));
+}
+
+function fetchRssItemsFromUrls(array $urls): array {
+  $items = [];
+
+  foreach ($urls as $url) {
+    $xmlText = fetchUrl($url, 8);
+    if ($xmlText === null || $xmlText === '') {
+      continue;
+    }
+
+    $parsedItems = parseRssItems($xmlText);
+    foreach ($parsedItems as $item) {
+      $item['rssUrl'] = $url;
+      $items[] = $item;
+    }
+  }
+
+  return $items;
+}
+
+function filterAndDedupeItems(array $items, array $searchTerms, array $excludeTerms, int $maxItems): array {
+  $filtered = [];
+  $seen = [];
+
+  foreach ($items as $item) {
+    $title = $item['title'] ?? '';
+    $description = $item['description'] ?? '';
+    $link = $item['url'] ?? '';
+
+    if ($title === '' || $link === '') {
+      continue;
+    }
+
+    if (!isRelevantToCompany($title . ' ' . $description . ' ' . $link, $searchTerms, $excludeTerms)) {
+      continue;
+    }
+
+    $dedupeKey = sha1(normalizeText($title) . '|' . normalizeUrlForDedupe($link));
+    if (isset($seen[$dedupeKey])) {
+      continue;
+    }
+    $seen[$dedupeKey] = true;
+
+    $filtered[] = $item;
+  }
+
+  usort($filtered, function ($a, $b) {
+    $ta = strtotime($a['publishedAtIso'] ?? '') ?: 0;
+    $tb = strtotime($b['publishedAtIso'] ?? '') ?: 0;
+    return $tb <=> $ta;
+  });
+
+  return array_slice($filtered, 0, max(0, $maxItems));
+}
+
 
 function buildNewsSearchQuery(array $searchTerms, int $lookbackDays): string {
   $safeTerms = array_values(array_filter($searchTerms, fn($term) => trim((string)$term) !== ''));
@@ -586,6 +657,35 @@ function makeSummary(string $description, string $title, string $companyName): s
 
   return $base;
 }
+
+function makeSearchSummary(string $description, string $title, string $companyName, string $domain): string {
+  $base = $description !== '' ? $description : $title;
+
+  if ($base === '') {
+    return 'Search result signal detected for ' . $companyName . ($domain ? ' from ' . $domain : '') . '.';
+  }
+
+  $maxLen = 180;
+  if (mb_strlen($base, 'UTF-8') > $maxLen) {
+    return mb_substr($base, 0, $maxLen - 1, 'UTF-8') . '…';
+  }
+
+  return $base;
+}
+
+function makeSearchTopicLabel(string $text): string {
+  $lower = normalizeText($text);
+
+  if (containsAny($lower, ['official', 'corporate', 'about', 'company'])) return 'Corporate presence';
+  if (containsAny($lower, ['investor', 'ir', 'annual report', 'financial', 'shareholder'])) return 'Investor information';
+  if (containsAny($lower, ['career', 'jobs', 'recruit', 'employment'])) return 'Talent signal';
+  if (containsAny($lower, ['product', 'service', 'store', 'shop'])) return 'Product presence';
+  if (containsAny($lower, ['wikipedia', 'profile', 'overview'])) return 'Knowledge profile';
+  if (containsAny($lower, ['sustainability', 'esg', 'climate', 'impact'])) return 'Sustainability presence';
+
+  return 'Web presence';
+}
+
 
 function makeTopicLabel(string $text): string {
   $lower = normalizeText($text);
