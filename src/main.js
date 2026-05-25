@@ -276,6 +276,7 @@ const planetMeshes = [];
 const companyPlanetMeshes = [];
 const shootingStars = [];
 const signalParticles = [];
+const floatingSignalTexts = [];
 let hoveredSignalParticle = null;
 const SIGNAL_HIT_RADIUS_PX = 18;
 const compareGroup = new THREE.Group();
@@ -1260,24 +1261,171 @@ function spawnRandomFloatingCaption() {
   createFloatingSignalCaption(particle, false);
 }
 
+function makeSignalTextSprite(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const safeText = String(text || 'Observed signal').length > 62
+    ? `${String(text || 'Observed signal').slice(0, 59)}...`
+    : String(text || 'Observed signal');
+
+  ctx.font = '500 64px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(2, 4, 10, 0.76)';
+  ctx.fillStyle = 'rgba(236, 248, 255, 0.96)';
+  ctx.shadowColor = 'rgba(120, 220, 255, 0.42)';
+  ctx.shadowBlur = 18;
+
+  ctx.strokeText(safeText, 38, canvas.height / 2);
+  ctx.fillText(safeText, 38, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const sprite = new THREE.Sprite(material);
+  const height = 7.2;
+  const aspect = canvas.width / canvas.height;
+  sprite.scale.set(height * aspect, height, 1);
+  sprite.renderOrder = 46;
+
+  return sprite;
+}
+
+function createSignalCaptionTrail(sourcePosition, textPosition) {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    sourcePosition.clone(),
+    textPosition.clone()
+  ]);
+
+  const material = new THREE.LineBasicMaterial({
+    color: 0xbdefff,
+    transparent: true,
+    opacity: 0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const line = new THREE.Line(geometry, material);
+  line.renderOrder = 45;
+  return line;
+}
+
 function createFloatingSignalCaption(particle, preferSummary = false) {
   const data = particle.userData;
-  const uiLayer = document.getElementById('ui-layer') || document.body;
-  const screen = toScreenPosition(particle.position);
-  if (!screen || screen.x < -40 || screen.x > window.innerWidth + 40 || screen.y < -40 || screen.y > window.innerHeight + 40) return;
+  if (!data) return;
 
   const text = preferSummary
     ? (data.summary || data.topicLabel || data.title)
-    : (data.topicLabel || data.summary || 'Observed signal');
+    : (data.topicLabel || data.summary || data.title || 'Observed signal');
 
-  const caption = document.createElement('div');
-  caption.className = 'floating-signal-caption';
-  caption.textContent = text;
-  caption.style.left = `${screen.x}px`;
-  caption.style.top = `${screen.y - 12}px`;
-  uiLayer.appendChild(caption);
+  if (!text) return;
 
-  setTimeout(() => caption.remove(), 3000);
+  const sprite = makeSignalTextSprite(text);
+
+  const towardCamera = camera.position.clone().sub(particle.position).normalize();
+  let side = new THREE.Vector3().crossVectors(towardCamera, new THREE.Vector3(0, 1, 0)).normalize();
+  if (!Number.isFinite(side.x) || side.lengthSq() < 0.0001) {
+    side = new THREE.Vector3(1, 0, 0);
+  }
+
+  const sideDirection = Math.random() > 0.5 ? 1 : -1;
+  const sideVector = side.multiplyScalar(sideDirection);
+  const upVector = new THREE.Vector3(0, 1, 0);
+  const initialTextPosition = particle.position.clone()
+    .add(upVector.clone().multiplyScalar(2.0))
+    .add(sideVector.clone().multiplyScalar(2.7));
+
+  sprite.position.copy(initialTextPosition);
+  const trail = createSignalCaptionTrail(particle.position, initialTextPosition);
+
+  scene.add(trail);
+  scene.add(sprite);
+
+  floatingSignalTexts.push({
+    sprite,
+    trail,
+    sourceParticle: particle,
+    anchor: particle.position.clone(),
+    bornAt: performance.now(),
+    maxAge: 2600 + Math.random() * 900,
+    upVector,
+    sideVector,
+    sourceOffset: new THREE.Vector3(0, 0, 0),
+    driftBase: 2.7 + Math.random() * 1.6,
+    liftBase: 1.8 + Math.random() * 1.1
+  });
+}
+
+function updateFloatingSignalTexts(now) {
+  for (let i = floatingSignalTexts.length - 1; i >= 0; i--) {
+    const item = floatingSignalTexts[i];
+    const age = now - item.bornAt;
+    const progress = THREE.MathUtils.clamp(age / item.maxAge, 0, 1);
+
+    if (progress >= 1) {
+      removeFloatingSignalTextAtIndex(i);
+      continue;
+    }
+
+    const particleIsAlive = item.sourceParticle && item.sourceParticle.parent && item.sourceParticle.material;
+    const sourcePosition = particleIsAlive
+      ? item.sourceParticle.position.clone()
+      : item.anchor.clone();
+
+    const drift = easeOutCubic(progress);
+    const textPosition = sourcePosition.clone()
+      .add(item.upVector.clone().multiplyScalar(item.liftBase + drift * 6.2))
+      .add(item.sideVector.clone().multiplyScalar(item.driftBase + drift * 6.0));
+
+    item.sprite.position.copy(textPosition);
+
+    const positions = item.trail.geometry.attributes.position.array;
+    positions[0] = sourcePosition.x;
+    positions[1] = sourcePosition.y;
+    positions[2] = sourcePosition.z;
+    positions[3] = textPosition.x;
+    positions[4] = textPosition.y - 0.7;
+    positions[5] = textPosition.z;
+    item.trail.geometry.attributes.position.needsUpdate = true;
+
+    const fadeIn = THREE.MathUtils.clamp(age / 180, 0, 1);
+    const fadeOut = progress > 0.70 ? 1 - (progress - 0.70) / 0.30 : 1;
+    const alpha = Math.max(0, fadeIn * fadeOut);
+
+    item.sprite.material.opacity = alpha;
+    item.trail.material.opacity = alpha * 0.62;
+  }
+}
+
+function removeFloatingSignalTextAtIndex(index) {
+  const item = floatingSignalTexts[index];
+  if (!item) return;
+
+  scene.remove(item.sprite);
+  scene.remove(item.trail);
+
+  if (item.sprite.material?.map) item.sprite.material.map.dispose();
+  if (item.sprite.material) item.sprite.material.dispose();
+  if (item.trail.geometry) item.trail.geometry.dispose();
+  if (item.trail.material) item.trail.material.dispose();
+
+  floatingSignalTexts.splice(index, 1);
 }
 
 function toScreenPosition(position) {
@@ -1852,6 +2000,7 @@ function animate() {
   updateCameraTween();
   updateCompareVisual(now);
   updateSignalParticles(now);
+  updateFloatingSignalTexts(now);
   updateObservedPlanetGlow(now);
   controls.update();
 
