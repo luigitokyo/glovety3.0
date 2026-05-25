@@ -276,7 +276,11 @@ const signalParticles = [];
 const compareGroup = new THREE.Group();
 scene.add(compareGroup);
 
+const attentionFocusGroup = new THREE.Group();
+scene.add(attentionFocusGroup);
+
 let activeCompareVisual = null;
+let activeObservedGlow = null;
 let gravityTickerTimer = null;
 let attentionScanTimer = null;
 let latestObservedPlanet = null;
@@ -853,8 +857,10 @@ function buildMockSignalForPlanet(planet) {
   const name = planet.userData.name;
   const gravity = planet.userData.gravity || 0;
 
-  const snsCount = THREE.MathUtils.clamp(Math.round(3 + gravity * 1.2 + Math.random() * 5), 3, 18);
-  const newsCount = THREE.MathUtils.clamp(Math.round(1 + gravity * 0.35 + Math.random() * 2), 1, 6);
+  // Mock density is intentionally a little higher so the signal layer feels alive.
+  // Later, these counts can map directly from real SNS/news volume.
+  const snsCount = THREE.MathUtils.clamp(Math.round(10 + gravity * 2.0 + Math.random() * 10), 10, 34);
+  const newsCount = THREE.MathUtils.clamp(Math.round(2 + gravity * 0.55 + Math.random() * 3), 2, 8);
 
   const snsItems = Array.from({ length: snsCount }, (_, index) => {
     const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
@@ -892,7 +898,11 @@ function buildMockSignalForPlanet(planet) {
 function spawnSNSOrbitParticles(planet, items) {
   items.forEach((item) => {
     const radius = planet.userData.radius || 1;
-    const orbitRadius = Math.max(14, radius * (16 + Math.random() * 18));
+
+    // Tighter, denser SNS orbit: small particles converge inward, then stay like satellites.
+    const finalOrbitRadius = Math.max(5.5, radius * (8 + Math.random() * 8));
+    const startOrbitRadius = finalOrbitRadius * (2.6 + Math.random() * 1.8);
+
     const material = new THREE.SpriteMaterial({
       map: signalParticleTexture,
       color: new THREE.Color(0x94d7ff),
@@ -903,7 +913,8 @@ function spawnSNSOrbitParticles(planet, items) {
     });
 
     const particle = new THREE.Sprite(material);
-    particle.scale.set(4.2, 4.2, 1);
+    const visualSize = 1.7 + Math.random() * 1.0;
+    particle.scale.set(visualSize, visualSize, 1);
     particle.position.copy(planet.position);
     particle.userData = {
       isSignalParticle: true,
@@ -912,14 +923,17 @@ function spawnSNSOrbitParticles(planet, items) {
       targetPlanet: planet,
       bornAt: performance.now(),
       maxAge: SNS_PARTICLE_MAX_AGE_MS * (0.75 + Math.random() * 0.5),
-      fadeInMs: 1600,
-      orbitRadius,
-      orbitSpeed: 0.0035 + Math.random() * 0.006,
+      fadeInMs: 1200,
+      convergenceMs: 9000 + Math.random() * 9000,
+      startOrbitRadius,
+      finalOrbitRadius,
+      orbitRadius: startOrbitRadius,
+      orbitSpeed: 0.006 + Math.random() * 0.011,
       orbitAngle: Math.random() * Math.PI * 2,
       orbitTiltX: Math.random() * Math.PI,
       orbitTiltZ: Math.random() * Math.PI,
       phase: Math.random() * Math.PI * 2,
-      baseOpacity: 0.44 + Math.random() * 0.34,
+      baseOpacity: 0.42 + Math.random() * 0.32,
       url: item.url,
       title: item.title,
       topicLabel: item.topicLabel,
@@ -937,11 +951,15 @@ function spawnSNSOrbitParticles(planet, items) {
 function spawnNewsCurlParticles(planet, items) {
   items.forEach((item) => {
     const target = planet.position.clone();
-    const orbitRadius = Math.max(18, (planet.userData.radius || 1) * (22 + Math.random() * 18));
+
+    // News particles arrive from outside, curl once or twice, then fade close to the planet.
+    const finalOrbitRadius = Math.max(6.5, (planet.userData.radius || 1) * (9 + Math.random() * 9));
+    const startCurlRadius = finalOrbitRadius * (2.0 + Math.random() * 0.9);
     const startDirection = randomUnitVector();
-    const startDistance = 260 + Math.random() * 420;
-    const startPosition = target.clone().add(startDirection.multiplyScalar(startDistance));
-    const tangent = randomUnitVector().cross(startDirection).normalize();
+    const startDistance = 150 + Math.random() * 260;
+    const startPosition = target.clone().add(startDirection.clone().multiplyScalar(startDistance));
+    const rawTangent = randomUnitVector().cross(startDirection);
+    const tangent = rawTangent.lengthSq() > 0.0001 ? rawTangent.normalize() : new THREE.Vector3(0, 1, 0);
 
     const material = new THREE.SpriteMaterial({
       map: signalParticleTexture,
@@ -953,7 +971,8 @@ function spawnNewsCurlParticles(planet, items) {
     });
 
     const particle = new THREE.Sprite(material);
-    particle.scale.set(6.5, 6.5, 1);
+    const visualSize = 2.3 + Math.random() * 1.3;
+    particle.scale.set(visualSize, visualSize, 1);
     particle.position.copy(startPosition);
     particle.userData = {
       isSignalParticle: true,
@@ -965,11 +984,13 @@ function spawnNewsCurlParticles(planet, items) {
       startPosition,
       startDirection,
       tangent,
-      orbitRadius,
+      finalOrbitRadius,
+      startCurlRadius,
+      orbitRadius: startCurlRadius,
       orbitAngle: Math.random() * Math.PI * 2,
-      curlTurns: 1.05 + Math.random() * 0.65,
+      curlTurns: 1.45 + Math.random() * 0.85,
       phase: Math.random() * Math.PI * 2,
-      baseOpacity: 0.72 + Math.random() * 0.24,
+      baseOpacity: 0.64 + Math.random() * 0.22,
       hasCaptioned: false,
       url: item.url,
       title: item.title,
@@ -1009,10 +1030,19 @@ function updateSNSOrbitParticle(particle, data, age, progress) {
   const planet = data.targetPlanet;
   if (!planet) return;
 
-  data.orbitAngle += data.orbitSpeed;
-  const x = Math.cos(data.orbitAngle) * data.orbitRadius;
-  const z = Math.sin(data.orbitAngle) * data.orbitRadius;
-  const y = Math.sin(data.orbitAngle + data.phase) * data.orbitRadius * 0.26;
+  // Spiral convergence: start outside, then settle into a tight satellite orbit.
+  const convergenceT = THREE.MathUtils.clamp(age / data.convergenceMs, 0, 1);
+  const easedConvergence = easeOutCubic(convergenceT);
+  data.orbitRadius = THREE.MathUtils.lerp(data.startOrbitRadius, data.finalOrbitRadius, easedConvergence);
+
+  // Move faster while being captured, then stabilize.
+  const captureBoost = 1 + (1 - easedConvergence) * 1.4;
+  data.orbitAngle += data.orbitSpeed * captureBoost;
+
+  const spiralWobble = Math.sin(age * 0.004 + data.phase) * data.finalOrbitRadius * 0.08 * (1 - easedConvergence);
+  const x = Math.cos(data.orbitAngle) * (data.orbitRadius + spiralWobble);
+  const z = Math.sin(data.orbitAngle) * (data.orbitRadius + spiralWobble);
+  const y = Math.sin(data.orbitAngle + data.phase) * data.orbitRadius * 0.18;
 
   const offset = new THREE.Vector3(x, y, z);
   offset.applyAxisAngle(new THREE.Vector3(1, 0, 0), data.orbitTiltX);
@@ -1021,8 +1051,8 @@ function updateSNSOrbitParticle(particle, data, age, progress) {
   particle.position.copy(planet.position).add(offset);
 
   const fadeIn = THREE.MathUtils.clamp(age / data.fadeInMs, 0, 1);
-  const fadeOut = progress > 0.72 ? 1 - (progress - 0.72) / 0.28 : 1;
-  const pulse = 0.72 + 0.28 * Math.sin(performance.now() * 0.003 + data.phase);
+  const fadeOut = progress > 0.76 ? 1 - (progress - 0.76) / 0.24 : 1;
+  const pulse = 0.68 + 0.32 * Math.sin(performance.now() * 0.0045 + data.phase);
   particle.material.opacity = Math.max(0, data.baseOpacity * fadeIn * fadeOut * pulse);
 }
 
@@ -1031,32 +1061,34 @@ function updateNewsCurlParticle(particle, data, age, progress) {
   if (!planet) return;
 
   const target = planet.position.clone();
-  const incomingEnd = target.clone().add(data.startDirection.clone().multiplyScalar(data.orbitRadius));
+  const incomingEnd = target.clone().add(data.startDirection.clone().multiplyScalar(data.startCurlRadius));
 
-  if (progress < 0.52) {
-    const t = easeOutCubic(progress / 0.52);
-    const curveLift = Math.sin(t * Math.PI) * 52;
+  if (progress < 0.46) {
+    const t = easeOutCubic(progress / 0.46);
+    const curveLift = Math.sin(t * Math.PI) * data.startCurlRadius * 0.85;
     const curved = new THREE.Vector3().lerpVectors(data.startPosition, incomingEnd, t)
       .add(data.tangent.clone().multiplyScalar(curveLift));
     particle.position.copy(curved);
-    particle.material.opacity = data.baseOpacity * Math.min(1, progress / 0.12);
+    particle.material.opacity = data.baseOpacity * Math.min(1, progress / 0.1);
   } else {
-    const curlT = (progress - 0.52) / 0.48;
+    const curlT = (progress - 0.46) / 0.54;
     const angle = data.orbitAngle + curlT * Math.PI * 2 * data.curlTurns;
-    const radius = data.orbitRadius * (1.25 - curlT * 0.45);
+
+    // Tighten the curl so it visibly converges into the planet's gravity well.
+    const radius = THREE.MathUtils.lerp(data.startCurlRadius, data.finalOrbitRadius * 0.38, easeOutCubic(curlT));
     const offset = new THREE.Vector3(
       Math.cos(angle) * radius,
-      Math.sin(angle * 1.25 + data.phase) * radius * 0.25,
+      Math.sin(angle * 1.35 + data.phase) * radius * 0.16,
       Math.sin(angle) * radius
     );
-    offset.applyAxisAngle(data.tangent, 0.65);
+    offset.applyAxisAngle(data.tangent, 0.72);
     particle.position.copy(target).add(offset);
 
-    const fade = Math.max(0, 1 - curlT);
-    const flash = 0.75 + 0.25 * Math.sin(performance.now() * 0.014 + data.phase);
-    particle.material.opacity = data.baseOpacity * fade * flash;
+    const fade = Math.max(0, 1 - curlT * 1.12);
+    const flash = 0.72 + 0.28 * Math.sin(performance.now() * 0.016 + data.phase);
+    particle.material.opacity = Math.max(0, data.baseOpacity * fade * flash);
 
-    if (!data.hasCaptioned && curlT > 0.16) {
+    if (!data.hasCaptioned && curlT > 0.14) {
       data.hasCaptioned = true;
       createFloatingSignalCaption(particle, true);
     }
@@ -1388,13 +1420,109 @@ function renderRankingPanel(limit = 8) {
 }
 
 function markLatestObservedPlanet(planet) {
+  if (!planet) return;
+
   latestObservedPlanet = planet;
+  window.__latestObservedPlanet = planet;
+  window.__latestObservedPlanetName = planet.userData?.name;
 
   const telescopeButton = document.getElementById('telescope-button');
-  if (!telescopeButton || !planet) return;
+  if (telescopeButton) {
+    telescopeButton.classList.add('telescope-alert');
+    telescopeButton.title = `Focus latest observed company: ${planet.userData.name}`;
+  }
 
-  telescopeButton.classList.add('telescope-alert');
-  telescopeButton.title = `Focus latest observed company: ${planet.userData.name}`;
+  highlightObservedPlanet(planet);
+}
+
+
+function clearObservedPlanetGlow() {
+  while (attentionFocusGroup.children.length > 0) {
+    const child = attentionFocusGroup.children.pop();
+    attentionFocusGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) child.material.dispose();
+  }
+  activeObservedGlow = null;
+}
+
+function highlightObservedPlanet(planet) {
+  clearObservedPlanetGlow();
+  if (!planet) return;
+
+  const radius = planet.userData.radius || 1;
+  const haloSize = Math.max(54, radius * 95);
+  const ringRadius = Math.max(13, radius * 22);
+
+  const group = new THREE.Group();
+  group.position.copy(planet.position);
+  group.userData = { targetPlanet: planet, baseHaloSize: haloSize };
+
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: compareGlowTexture,
+    color: 0x9be7ff,
+    transparent: true,
+    opacity: 0.72,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  halo.scale.set(haloSize, haloSize, 1);
+  group.add(halo);
+
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0x9be7ff,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+
+  const ringA = new THREE.Mesh(new THREE.TorusGeometry(ringRadius, 0.18, 10, 96), ringMaterial.clone());
+  ringA.rotation.x = Math.PI / 2.6;
+  group.add(ringA);
+
+  const ringB = new THREE.Mesh(new THREE.TorusGeometry(ringRadius * 1.26, 0.12, 10, 96), ringMaterial.clone());
+  ringB.rotation.y = Math.PI / 2.9;
+  ringB.material.opacity = 0.32;
+  group.add(ringB);
+
+  const beacon = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: signalParticleTexture,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  beacon.scale.set(Math.max(9, radius * 18), Math.max(9, radius * 18), 1);
+  group.add(beacon);
+
+  attentionFocusGroup.add(group);
+  activeObservedGlow = { group, halo, beacon, rings: [ringA, ringB], startedAt: performance.now() };
+}
+
+function updateObservedPlanetGlow(now) {
+  if (!activeObservedGlow) return;
+
+  const { group, halo, beacon, rings, startedAt } = activeObservedGlow;
+  const targetPlanet = group.userData.targetPlanet;
+  if (!targetPlanet) return;
+
+  group.position.copy(targetPlanet.position);
+
+  const pulse = 0.5 + 0.5 * Math.sin((now - startedAt) * 0.0045);
+  const slowPulse = 0.5 + 0.5 * Math.sin((now - startedAt) * 0.0018);
+  const haloSize = group.userData.baseHaloSize * (0.88 + pulse * 0.22);
+  halo.scale.set(haloSize, haloSize, 1);
+  halo.material.opacity = 0.38 + pulse * 0.42;
+  beacon.material.opacity = 0.58 + pulse * 0.42;
+
+  rings[0].rotation.z += 0.018;
+  rings[1].rotation.x += 0.011;
+  rings[1].rotation.z -= 0.009;
+  rings[0].material.opacity = 0.28 + slowPulse * 0.34;
+  rings[1].material.opacity = 0.18 + pulse * 0.24;
 }
 
 function clearTelescopeAlert() {
@@ -1628,6 +1756,7 @@ function animate() {
   updateCameraTween();
   updateCompareVisual(now);
   updateSignalParticles(now);
+  updateObservedPlanetGlow(now);
   controls.update();
 
   for (let i = shootingStars.length - 1; i >= 0; i--) {
