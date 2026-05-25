@@ -23,9 +23,10 @@ const SNS_PARTICLE_MAX_AGE_MS = 180000;
 const NEWS_PARTICLE_MAX_AGE_MS = 55000;
 const FLOATING_CAPTION_INTERVAL_MS = 4500;
 const MAX_SIGNAL_PARTICLES = 700;
+const ATTENTION_API_PATH = '/api/attention-signals.php';
 
 // Build check for cache debugging.
-window.__GLOVETY_BUILD_CHECK__ = 'main-sharp-particles-2026-05-25-001';
+window.__GLOVETY_BUILD_CHECK__ = 'main-search-news-real-only-2026-05-25-001';
 
 ensureUI();
 
@@ -290,6 +291,7 @@ let activeObservedGlow = null;
 let gravityTickerTimer = null;
 let attentionScanTimer = null;
 let latestObservedPlanet = null;
+let isAttentionScanRunning = false;
 let floatingCaptionTimer = null;
 let initialView = { cameraPosition: camera.position.clone(), controlsTarget: controls.target.clone() };
 let cameraTween = null;
@@ -297,6 +299,13 @@ const infoPanel = document.getElementById('infoPanel');
 
 if (infoPanel) {
   infoPanel.addEventListener('click', (event) => {
+    const signalOpenButton = event.target.closest('.signal-detail-open');
+    if (signalOpenButton) {
+      const url = signalOpenButton.dataset.url;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     if (event.target.closest('.info-panel-close')) {
       infoPanel.style.display = 'none';
       return;
@@ -838,9 +847,9 @@ function startAttentionSignalLayer() {
   console.log('[Glovety] startAttentionSignalLayer. company planets:', companyPlanetMeshes.length);
   addObservationLog(`Attention scan started. Companies loaded: ${companyPlanetMeshes.length}.`);
 
-  // StackBlitz Consoleから手動実行できるようにする
   window.__forceAttentionScan = performAttentionScan;
   window.__signalParticles = signalParticles;
+  window.__floatingSignalTexts = floatingSignalTexts;
 
   performAttentionScan();
 
@@ -853,80 +862,133 @@ function startAttentionSignalLayer() {
   }, FLOATING_CAPTION_INTERVAL_MS);
 }
 
-function performAttentionScan() {
-  const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
-  console.log('[Glovety] performAttentionScan candidates:', candidates.length);
+async function performAttentionScan() {
+  if (isAttentionScanRunning) return;
+  isAttentionScanRunning = true;
 
-  if (candidates.length === 0) {
-    addObservationLog('Attention scan skipped: no company planets loaded.');
-    return;
+  try {
+    const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
+    console.log('[Glovety] performAttentionScan candidates:', candidates.length);
+
+    if (candidates.length === 0) {
+      addObservationLog('Attention scan skipped: no company planets loaded.');
+      return;
+    }
+
+    const planet = pickRandom(candidates);
+    markLatestObservedPlanet(planet);
+
+    let signal;
+    try {
+      signal = await fetchAttentionSignalsForPlanet(planet);
+    } catch (error) {
+      console.warn('[Glovety] Attention API failed. No particles released.', error);
+      addObservationLog(`${planet.userData.name} signal scan failed: API unavailable. No dummy particles released.`);
+      window.__lastAttentionSignalSource = 'api-error';
+      window.__lastAttentionSignal = null;
+      return;
+    }
+
+    const normalized = normalizeAttentionSignal(signal);
+    const searchItems = sanitizeSignalItems(normalized.searchItems, 'search');
+    const newsItems = sanitizeSignalItems(normalized.newsItems, 'news');
+
+    // Real-only rule:
+    // - no mock fallback
+    // - no empty particles
+    // - no items without URL
+    // - no items without title/topic/summary
+    spawnSearchOrbitParticles(planet, searchItems);
+    spawnNewsCurlParticles(planet, newsItems);
+    enforceSignalParticleLimit();
+
+    window.__lastAttentionSignal = normalized;
+    window.__lastAttentionSignalSource = 'api';
+    window.__lastSearchItemsCount = searchItems.length;
+    window.__lastNewsItemsCount = newsItems.length;
+    window.__signalParticlesCount = signalParticles.length;
+
+    addObservationLog(`${planet.userData.name} signal scan: ${searchItems.length} Search / ${newsItems.length} News particles released.`);
+    console.log('[Glovety] real scan released:', planet.userData.name, {
+      search: searchItems.length,
+      news: newsItems.length,
+      totalSignalParticles: signalParticles.length
+    });
+  } finally {
+    isAttentionScanRunning = false;
+  }
+}
+
+async function fetchAttentionSignalsForPlanet(planet) {
+  const company = encodeURIComponent(planet.userData.name);
+
+  const response = await fetch(`${ATTENTION_API_PATH}?company=${company}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Attention API failed: ${response.status}`);
   }
 
-  const planet = pickRandom(candidates);
-  markLatestObservedPlanet(planet);
-
-  const signal = buildMockSignalForPlanet(planet);
-
-  spawnSNSOrbitParticles(planet, signal.snsItems);
-  spawnNewsCurlParticles(planet, signal.newsItems);
-  enforceSignalParticleLimit();
-
-  window.__signalParticlesCount = signalParticles.length;
-
-  addObservationLog(`${planet.userData.name} signal scan: ${signal.snsItems.length} SNS / ${signal.newsItems.length} News particles released.`);
-  console.log('[Glovety] scan released:', planet.userData.name, {
-    sns: signal.snsItems.length,
-    news: signal.newsItems.length,
-    totalSignalParticles: signalParticles.length
-  });
+  return response.json();
 }
 
-function buildMockSignalForPlanet(planet) {
-  const name = planet.userData.name;
-  const gravity = planet.userData.gravity || 0;
+function normalizeAttentionSignal(signal) {
+  const safe = signal && typeof signal === 'object' ? signal : {};
 
-  // Dense mock signal so the effect is visible before real SNS/news APIs are connected.
-  const snsCount = THREE.MathUtils.clamp(Math.round(10 + gravity * 2.0 + Math.random() * 9), 10, 32);
-  const newsCount = THREE.MathUtils.clamp(Math.round(2 + gravity * 0.5 + Math.random() * 3), 2, 8);
-
-  const snsItems = Array.from({ length: snsCount }, (_, index) => {
-    const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
-    return {
-      kind: 'sns',
-      title: `${topic.label} discussion`,
-      topicLabel: topic.label,
-      summary: topic.summary,
-      source: 'SNS Signal',
-      publishedAt: `${Math.max(1, Math.round(Math.random() * 58))}m ago`,
-      url: `https://x.com/search?q=${encodeURIComponent(`${name} ${topic.keywords[0]}`)}&src=typed_query`,
-      weight: 1 + Math.random(),
-      index
-    };
-  });
-
-  const newsItems = Array.from({ length: newsCount }, (_, index) => {
-    const topic = pickRandom(SIGNAL_TOPIC_LIBRARY);
-    return {
-      kind: 'news',
-      title: `${topic.label} coverage`,
-      topicLabel: topic.label,
-      summary: topic.summary,
-      source: 'News Signal',
-      publishedAt: `${Math.max(1, Math.round(Math.random() * 24))}h ago`,
-      url: `https://www.google.com/search?tbm=nws&q=${encodeURIComponent(`${name} ${topic.keywords[0]}`)}`,
-      weight: 1.4 + Math.random() * 1.2,
-      index
-    };
-  });
-
-  return { snsItems, newsItems };
+  return {
+    company: safe.company || '',
+    updatedAt: safe.updatedAt || '',
+    searchItems: Array.isArray(safe.searchItems)
+      ? safe.searchItems
+      : [],
+    newsItems: Array.isArray(safe.newsItems)
+      ? safe.newsItems
+      : []
+  };
 }
 
-function spawnSNSOrbitParticles(planet, items) {
+function sanitizeSignalItems(items, fallbackKind) {
+  if (!Array.isArray(items)) return [];
+
+  return items
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => {
+      const url = String(item.url || '').trim();
+      const title = String(item.title || item.topicLabel || '').trim();
+      const topicLabel = String(item.topicLabel || item.title || '').trim();
+      const summary = String(item.summary || '').trim();
+      const source = String(item.source || '').trim();
+      const publishedAt = String(item.publishedAt || '').trim();
+      const kind = fallbackKind;
+
+      return {
+        ...item,
+        kind,
+        url,
+        title,
+        topicLabel,
+        summary,
+        source,
+        publishedAt,
+        weight: Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1
+      };
+    })
+    .filter((item) => {
+      const hasMeaning = Boolean(item.title || item.topicLabel || item.summary);
+      const hasUrl = Boolean(item.url);
+      const isDummyX = item.url.includes('x.com/search') || item.url.includes('twitter.com/search');
+      return hasUrl && hasMeaning && !isDummyX;
+    });
+}
+
+function spawnSearchOrbitParticles(planet, items) {
   items.forEach((item) => {
     const radius = planet.userData.radius || 1;
     const finalOrbitRadius = Math.max(4.2, radius * (4.8 + Math.random() * 3.8));
     const initialOrbitRadius = finalOrbitRadius * (2.2 + Math.random() * 1.15);
+
     const material = new THREE.SpriteMaterial({
       map: signalParticleTexture,
       color: new THREE.Color(0x9fe5ff),
@@ -942,9 +1004,10 @@ function spawnSNSOrbitParticles(planet, items) {
     const particleSize = 0.6 + Math.random() * 0.3;
     particle.scale.set(particleSize, particleSize, 1);
     particle.position.copy(planet.position);
+
     particle.userData = {
       isSignalParticle: true,
-      kind: 'sns',
+      kind: 'search',
       mode: 'orbit',
       targetPlanet: planet,
       bornAt: performance.now(),
@@ -969,7 +1032,9 @@ function spawnSNSOrbitParticles(planet, items) {
       createdOrder: performance.now() + Math.random(),
       baseScale: particleSize,
       hitRadiusPx: 18,
-      isHovered: false
+      isHovered: false,
+      captionSpawned: false,
+      captionDelayMs: 1000 + Math.random() * 2600
     };
 
     scene.add(particle);
@@ -1002,6 +1067,7 @@ function spawnNewsCurlParticles(planet, items) {
     const particleSize = 0.8 + Math.random() * 0.4;
     particle.scale.set(particleSize, particleSize, 1);
     particle.position.copy(startPosition);
+
     particle.userData = {
       isSignalParticle: true,
       kind: 'news',
@@ -1027,7 +1093,8 @@ function spawnNewsCurlParticles(planet, items) {
       createdOrder: performance.now() + Math.random(),
       baseScale: particleSize,
       hitRadiusPx: 20,
-      isHovered: false
+      isHovered: false,
+      captionSpawned: false
     };
 
     scene.add(particle);
@@ -1047,10 +1114,35 @@ function updateSignalParticles(now) {
       continue;
     }
 
-    if (data.kind === 'sns') {
-      updateSNSOrbitParticle(particle, data, age, progress);
+    if (data.kind === 'search') {
+      updateSearchOrbitParticle(particle, data, age, progress);
     } else if (data.kind === 'news') {
       updateNewsCurlParticle(particle, data, age, progress);
+    }
+
+    maybeSpawnSignalCaption(particle, data, age, progress);
+  }
+}
+
+function maybeSpawnSignalCaption(particle, data, age, progress) {
+  if (!data || data.captionSpawned) return;
+  if (!particle.material || particle.material.opacity < 0.10) return;
+
+  if (data.kind === 'news') {
+    if (age > 1300 || progress > 0.10) {
+      data.captionSpawned = true;
+      createFloatingSignalCaption(particle, true);
+    }
+    return;
+  }
+
+  if (data.kind === 'search') {
+    const delay = data.captionDelayMs || 1600;
+    if (age > delay) {
+      data.captionSpawned = true;
+      if (Math.random() < 0.42) {
+        createFloatingSignalCaption(particle, false);
+      }
     }
   }
 }
@@ -1065,13 +1157,12 @@ function applySignalParticleVisualState(particle, data, fallbackScale = 2.0) {
   }
 }
 
-function updateSNSOrbitParticle(particle, data, age, progress) {
+function updateSearchOrbitParticle(particle, data, age, progress) {
   const planet = data.targetPlanet;
   if (!planet) return;
 
   data.orbitAngle += data.orbitSpeed;
 
-  // 外側から内側へ短時間で収れんし、その後は惑星近傍を衛星軌道で周回する
   const convergence = THREE.MathUtils.clamp(age / 6500, 0, 1);
   const easedConvergence = easeOutCubic(convergence);
   data.orbitRadius = THREE.MathUtils.lerp(
@@ -1080,7 +1171,6 @@ function updateSNSOrbitParticle(particle, data, age, progress) {
     easedConvergence
   );
 
-  // 渦巻き感：収れん中だけ半径を波打たせる
   const swirl = 1 + (1 - easedConvergence) * 0.46 * Math.sin(age * 0.010 + data.phase);
   const activeRadius = data.orbitRadius * swirl;
 
@@ -1120,7 +1210,6 @@ function updateNewsCurlParticle(particle, data, age, progress) {
     const curlT = (progress - 0.46) / 0.54;
     const angle = data.orbitAngle + curlT * Math.PI * 2 * data.curlTurns;
 
-    // 惑星近くでクルリンしながら小さく収れんし、儚く消える
     const radius = data.orbitRadius * Math.max(0.16, 1.18 - curlT * 0.96);
     const offset = new THREE.Vector3(
       Math.cos(angle) * radius,
@@ -1135,8 +1224,9 @@ function updateNewsCurlParticle(particle, data, age, progress) {
     particle.material.opacity = data.baseOpacity * fade * flash;
     applySignalParticleVisualState(particle, data, 2.0);
 
-    if (!data.hasCaptioned && curlT > 0.14) {
+    if (!data.hasCaptioned && !data.captionSpawned && curlT > 0.14) {
       data.hasCaptioned = true;
+      data.captionSpawned = true;
       createFloatingSignalCaption(particle, true);
     }
   }
@@ -1168,8 +1258,6 @@ function enforceSignalParticleLimit() {
 function getSignalHit(clientX, clientY) {
   const activeParticles = signalParticles.filter((particle) => particle.material && particle.material.opacity > 0.04);
 
-  // Prefer screen-space hit testing for small glow sprites.
-  // This keeps the visual particle small while making it easier to click.
   if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
     let bestParticle = null;
     let bestDistance = Infinity;
@@ -1192,7 +1280,6 @@ function getSignalHit(clientX, clientY) {
     return bestParticle;
   }
 
-  // Fallback for older calls.
   const hits = raycaster.intersectObjects(activeParticles, false);
   return hits.length > 0 ? hits[0].object : null;
 }
@@ -1229,15 +1316,18 @@ function handleSignalPointerMove(event) {
 function showSignalTooltip(event, particle) {
   const tooltip = document.getElementById('signal-tooltip');
   if (!tooltip) return;
+
   const data = particle.userData;
-  const kindLabel = data.kind === 'news' ? 'NEWS SIGNAL' : 'SNS SIGNAL';
+  const kindLabel = data.kind === 'news' ? 'NEWS SIGNAL' : 'SEARCH SIGNAL';
+
   tooltip.innerHTML = `
     <div class="signal-tooltip-kicker">${kindLabel}</div>
     <div class="signal-tooltip-title">${escapeHTML(data.title || data.topicLabel || 'Observed signal')}</div>
     <div>${escapeHTML(data.summary || '')}</div>
     <div class="signal-tooltip-meta">${escapeHTML(data.source || '')}${data.publishedAt ? ` / ${escapeHTML(data.publishedAt)}` : ''}</div>
-    <div class="signal-tooltip-hint">Click to open source</div>
+    <div class="signal-tooltip-hint">Click to view detail</div>
   `;
+
   tooltip.style.left = `${event.clientX + 14}px`;
   tooltip.style.top = `${event.clientY + 14}px`;
   tooltip.style.display = 'block';
@@ -1251,35 +1341,41 @@ function hideSignalTooltip() {
 function spawnRandomFloatingCaption() {
   const candidates = signalParticles.filter((particle) => {
     const data = particle.userData;
-    if (!data || !particle.material || particle.material.opacity < 0.12) return false;
+    if (!data || data.captionSpawned || !particle.material || particle.material.opacity < 0.12) return false;
     const age = performance.now() - data.bornAt;
     return age > 1000 && age < data.maxAge * 0.82;
   });
 
   if (candidates.length === 0) return;
   const particle = pickRandom(candidates);
+  particle.userData.captionSpawned = true;
   createFloatingSignalCaption(particle, false);
 }
 
 function makeSignalTextSprite(text) {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
+  canvas.width = 768;
+  canvas.height = 160;
 
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const safeText = String(text || 'Observed signal').length > 52
-    ? `${String(text || 'Observed signal').slice(0, 49)}...`
+  const safeText = String(text || 'Observed signal').length > 54
+    ? `${String(text || 'Observed signal').slice(0, 51)}...`
     : String(text || 'Observed signal');
 
-  ctx.font = '400 24px monospace';
+  ctx.font = '400 32px "Courier New", monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(236, 248, 255, 0.96)';
-  ctx.shadowColor = 'rgba(120, 220, 255, 0.24)';
-  ctx.shadowBlur = 4;
-  ctx.fillText(safeText, 16, canvas.height / 2);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(2, 6, 16, 0.72)';
+  ctx.fillStyle = 'rgba(230, 246, 255, 0.96)';
+  ctx.shadowColor = 'rgba(120, 220, 255, 0.22)';
+  ctx.shadowBlur = 5;
+
+  ctx.strokeText(safeText, 18, canvas.height / 2);
+  ctx.fillText(safeText, 18, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.NearestFilter;
@@ -1295,7 +1391,7 @@ function makeSignalTextSprite(text) {
   });
 
   const sprite = new THREE.Sprite(material);
-  const height = 4.4;
+  const height = 5.0;
   const aspect = canvas.width / canvas.height;
   sprite.scale.set(height * aspect, height, 1);
   sprite.renderOrder = 46;
@@ -1310,7 +1406,7 @@ function createSignalCaptionTrail(sourcePosition, textPosition) {
   ]);
 
   const material = new THREE.LineBasicMaterial({
-    color: 0xbdefff,
+    color: 0x9fdfff,
     transparent: true,
     opacity: 0,
     depthTest: false,
@@ -1325,6 +1421,7 @@ function createSignalCaptionTrail(sourcePosition, textPosition) {
 function createFloatingSignalCaption(particle, preferSummary = false) {
   const data = particle.userData;
   if (!data) return;
+  data.captionSpawned = true;
 
   const text = preferSummary
     ? (data.summary || data.topicLabel || data.title)
@@ -1343,9 +1440,10 @@ function createFloatingSignalCaption(particle, preferSummary = false) {
   const sideDirection = Math.random() > 0.5 ? 1 : -1;
   const sideVector = side.multiplyScalar(sideDirection);
   const upVector = new THREE.Vector3(0, 1, 0);
+
   const initialTextPosition = particle.position.clone()
-    .add(upVector.clone().multiplyScalar(0.8))
-    .add(sideVector.clone().multiplyScalar(1.2));
+    .add(upVector.clone().multiplyScalar(1.05))
+    .add(sideVector.clone().multiplyScalar(1.45));
 
   sprite.position.copy(initialTextPosition);
   const trail = createSignalCaptionTrail(particle.position, initialTextPosition);
@@ -1359,13 +1457,15 @@ function createFloatingSignalCaption(particle, preferSummary = false) {
     sourceParticle: particle,
     anchor: particle.position.clone(),
     bornAt: performance.now(),
-    maxAge: 1700 + Math.random() * 500,
+    maxAge: 2100 + Math.random() * 600,
     upVector,
     sideVector,
     sourceOffset: new THREE.Vector3(0, 0, 0),
-    driftBase: 1.05 + Math.random() * 0.45,
-    liftBase: 0.7 + Math.random() * 0.35
+    driftBase: 1.25 + Math.random() * 0.55,
+    liftBase: 0.9 + Math.random() * 0.45
   });
+
+  window.__floatingSignalTextsCount = floatingSignalTexts.length;
 }
 
 function updateFloatingSignalTexts(now) {
@@ -1385,9 +1485,10 @@ function updateFloatingSignalTexts(now) {
       : item.anchor.clone();
 
     const drift = easeOutCubic(progress);
+    const microFloat = Math.sin(age * 0.006) * 0.18;
     const textPosition = sourcePosition.clone()
-      .add(item.upVector.clone().multiplyScalar(item.liftBase + drift * 1.25))
-      .add(item.sideVector.clone().multiplyScalar(item.driftBase + drift * 1.45));
+      .add(item.upVector.clone().multiplyScalar(item.liftBase + microFloat + drift * 1.35))
+      .add(item.sideVector.clone().multiplyScalar(item.driftBase + drift * 1.65));
 
     item.sprite.position.copy(textPosition);
 
@@ -1396,16 +1497,16 @@ function updateFloatingSignalTexts(now) {
     positions[1] = sourcePosition.y;
     positions[2] = sourcePosition.z;
     positions[3] = textPosition.x;
-    positions[4] = textPosition.y - 0.18;
+    positions[4] = textPosition.y - 0.24;
     positions[5] = textPosition.z;
     item.trail.geometry.attributes.position.needsUpdate = true;
 
-    const fadeIn = THREE.MathUtils.clamp(age / 120, 0, 1);
-    const fadeOut = progress > 0.78 ? 1 - (progress - 0.78) / 0.22 : 1;
+    const fadeIn = THREE.MathUtils.clamp(age / 140, 0, 1);
+    const fadeOut = progress > 0.76 ? 1 - (progress - 0.76) / 0.24 : 1;
     const alpha = Math.max(0, fadeIn * fadeOut);
 
-    item.sprite.material.opacity = alpha * 0.92;
-    item.trail.material.opacity = alpha * 0.36;
+    item.sprite.material.opacity = alpha * 0.88;
+    item.trail.material.opacity = alpha * 0.28;
   }
 }
 
@@ -1422,16 +1523,19 @@ function removeFloatingSignalTextAtIndex(index) {
   if (item.trail.material) item.trail.material.dispose();
 
   floatingSignalTexts.splice(index, 1);
+  window.__floatingSignalTextsCount = floatingSignalTexts.length;
 }
 
 function toScreenPosition(position) {
   const vector = position.clone().project(camera);
   if (vector.z < -1 || vector.z > 1) return null;
+
   return {
     x: (vector.x * 0.5 + 0.5) * window.innerWidth,
     y: (-vector.y * 0.5 + 0.5) * window.innerHeight
   };
 }
+
 
 function addObservationLog(message) {
   const logList = document.getElementById('observation-log-list');
@@ -1466,6 +1570,8 @@ const pointer = new THREE.Vector2();
 
 window.addEventListener('pointermove', handleSignalPointerMove);
 
+window.addEventListener('pointermove', handleSignalPointerMove);
+
 window.addEventListener('pointerdown', (event) => {
   const clickedElement = event.target;
   if (clickedElement.closest && (clickedElement.closest('#ui-layer') || clickedElement.closest('#infoPanel'))) return;
@@ -1476,17 +1582,50 @@ window.addEventListener('pointerdown', (event) => {
 
   const signalHit = getSignalHit(event.clientX, event.clientY);
   if (signalHit) {
-    const url = signalHit.userData.url;
-    if (url) {
-      addObservationLog(`Opened ${signalHit.userData.kind.toUpperCase()} signal: ${signalHit.userData.title || signalHit.userData.topicLabel}`);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    showSignalDetail(signalHit);
     return;
   }
 
   const intersects = raycaster.intersectObjects(planetMeshes);
   if (intersects.length > 0 && intersects[0].object.name) showCompanyInfo(intersects[0].object);
 });
+
+function showSignalDetail(particle) {
+  const data = particle.userData || {};
+  const kindLabel = data.kind === 'news' ? 'NEWS SIGNAL DETAIL' : 'SEARCH SIGNAL DETAIL';
+  const title = data.title || data.topicLabel || 'Observed signal';
+  const summary = data.summary || 'No summary available.';
+  const source = data.source || (data.kind === 'news' ? 'News' : 'Search');
+  const publishedAt = data.publishedAt ? ` / ${data.publishedAt}` : '';
+  const url = data.url || '';
+
+  setInfoPanelContent(`
+    <div class="company-detail-title">${escapeHTML(kindLabel)}</div>
+    <div class="company-detail-subtitle">${escapeHTML(source)}${escapeHTML(publishedAt)}</div>
+
+    <div class="company-score-row">
+      <div>
+        <div class="company-score-label">Signal Title</div>
+        <div style="font-size:14px;line-height:1.45;color:rgba(255,255,255,.92);margin-top:4px;">${escapeHTML(title)}</div>
+      </div>
+    </div>
+
+    <div class="company-interpretation">${escapeHTML(summary)}</div>
+
+    ${url ? `
+      <button
+        class="compare-clear-button signal-detail-open"
+        type="button"
+        data-url="${escapeHTML(url)}"
+      >
+        Open Source
+      </button>
+    ` : ''}
+
+    <div class="company-meta">Only real RSS Search / News signals are displayed. No dummy signal particles are generated.</div>
+  `);
+}
+
 
 function showCompanyInfo(planet) {
   if (!planet || !infoPanel) return;
