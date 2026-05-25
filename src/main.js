@@ -102,7 +102,7 @@ function ensureUI() {
       #top-right-controls { position: absolute; top: 24px; right: 24px; display: flex; gap: 10px; pointer-events: auto; z-index: 30; }
       .observatory-icon-button { width: 44px; height: 44px; border-radius: 2px; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.16); color: #fff; font-size: 20px; cursor: pointer; backdrop-filter: blur(16px); box-shadow: 0 0 24px rgba(120,190,255,.22); transition: transform .2s ease, background .2s ease, box-shadow .2s ease; }
       .observatory-icon-button:hover { transform: translateY(-1px) scale(1.04); background: rgba(255,255,255,.26); box-shadow: 0 0 34px rgba(120,190,255,.36); }
-      #telescope-button.telescope-alert { background: rgba(160,220,255,.34); border-color: rgba(180,240,255,.95); color: #ffffff; box-shadow: 0 0 18px rgba(120,220,255,.82), 0 0 42px rgba(80,160,255,.56), inset 0 0 18px rgba(255,255,255,.18); animation: telescopePulse 1.4s ease-in-out infinite; }
+      #telescope-button.telescope-alert { background: rgba(210,245,255,.62) !important; border-color: rgba(220,250,255,1) !important; color: #041226 !important; box-shadow: 0 0 24px rgba(160,235,255,.98), 0 0 64px rgba(80,190,255,.72), inset 0 0 20px rgba(255,255,255,.38) !important; animation: telescopePulse 1.15s ease-in-out infinite; }
       @keyframes telescopePulse { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.08); filter: brightness(1.35); } 100% { transform: scale(1); filter: brightness(1); } }
 
       #ranking-panel { position: absolute; top: 84px; right: 24px; width: 286px; box-sizing: border-box; padding: 16px; border-radius: 2px; background: rgba(255,255,255,.78); color: #101827; border: 1px solid rgba(255,255,255,.72); box-shadow: 0 18px 60px rgba(0,0,0,.28); backdrop-filter: blur(18px); pointer-events: auto; z-index: 25; }
@@ -826,6 +826,13 @@ function startAttentionSignalLayer() {
   if (attentionScanTimer) clearInterval(attentionScanTimer);
   if (floatingCaptionTimer) clearInterval(floatingCaptionTimer);
 
+  console.log('[Glovety] startAttentionSignalLayer. company planets:', companyPlanetMeshes.length);
+  addObservationLog(`Attention scan started. Companies loaded: ${companyPlanetMeshes.length}.`);
+
+  // StackBlitz Consoleから手動実行できるようにする
+  window.__forceAttentionScan = performAttentionScan;
+  window.__signalParticles = signalParticles;
+
   performAttentionScan();
 
   attentionScanTimer = setInterval(() => {
@@ -839,7 +846,12 @@ function startAttentionSignalLayer() {
 
 function performAttentionScan() {
   const candidates = companyPlanetMeshes.filter((planet) => planet.userData.type === 'company');
-  if (candidates.length === 0) return;
+  console.log('[Glovety] performAttentionScan candidates:', candidates.length);
+
+  if (candidates.length === 0) {
+    addObservationLog('Attention scan skipped: no company planets loaded.');
+    return;
+  }
 
   const planet = pickRandom(candidates);
   markLatestObservedPlanet(planet);
@@ -850,7 +862,14 @@ function performAttentionScan() {
   spawnNewsCurlParticles(planet, signal.newsItems);
   enforceSignalParticleLimit();
 
+  window.__signalParticlesCount = signalParticles.length;
+
   addObservationLog(`${planet.userData.name} signal scan: ${signal.snsItems.length} SNS / ${signal.newsItems.length} News particles released.`);
+  console.log('[Glovety] scan released:', planet.userData.name, {
+    sns: signal.snsItems.length,
+    news: signal.newsItems.length,
+    totalSignalParticles: signalParticles.length
+  });
 }
 
 function buildMockSignalForPlanet(planet) {
@@ -897,19 +916,20 @@ function buildMockSignalForPlanet(planet) {
 function spawnSNSOrbitParticles(planet, items) {
   items.forEach((item) => {
     const radius = planet.userData.radius || 1;
-    const finalOrbitRadius = Math.max(6, radius * (6.2 + Math.random() * 5.2));
-    const initialOrbitRadius = finalOrbitRadius * (2.8 + Math.random() * 1.8);
+    const finalOrbitRadius = Math.max(4.2, radius * (4.8 + Math.random() * 3.8));
+    const initialOrbitRadius = finalOrbitRadius * (2.2 + Math.random() * 1.15);
     const material = new THREE.SpriteMaterial({
       map: signalParticleTexture,
       color: new THREE.Color(0x9fe5ff),
       transparent: true,
       opacity: 0.0,
       blending: THREE.AdditiveBlending,
+      depthTest: false,
       depthWrite: false
     });
 
     const particle = new THREE.Sprite(material);
-    const particleSize = 1.6 + Math.random() * 1.25;
+    const particleSize = 2.4 + Math.random() * 1.15;
     particle.scale.set(particleSize, particleSize, 1);
     particle.position.copy(planet.position);
     particle.userData = {
@@ -947,9 +967,9 @@ function spawnSNSOrbitParticles(planet, items) {
 function spawnNewsCurlParticles(planet, items) {
   items.forEach((item) => {
     const target = planet.position.clone();
-    const orbitRadius = Math.max(7, (planet.userData.radius || 1) * (8 + Math.random() * 5));
+    const orbitRadius = Math.max(4.8, (planet.userData.radius || 1) * (5.8 + Math.random() * 3.8));
     const startDirection = randomUnitVector();
-    const startDistance = 220 + Math.random() * 360;
+    const startDistance = 140 + Math.random() * 220;
     const startPosition = target.clone().add(startDirection.clone().multiplyScalar(startDistance));
     const tangent = randomUnitVector().cross(startDirection).normalize();
     if (!Number.isFinite(tangent.x) || tangent.lengthSq() < 0.0001) tangent.set(0, 1, 0);
@@ -960,11 +980,12 @@ function spawnNewsCurlParticles(planet, items) {
       transparent: true,
       opacity: 0.0,
       blending: THREE.AdditiveBlending,
+      depthTest: false,
       depthWrite: false
     });
 
     const particle = new THREE.Sprite(material);
-    const particleSize = 2.1 + Math.random() * 1.3;
+    const particleSize = 3.0 + Math.random() * 1.4;
     particle.scale.set(particleSize, particleSize, 1);
     particle.position.copy(startPosition);
     particle.userData = {
@@ -1023,8 +1044,8 @@ function updateSNSOrbitParticle(particle, data, age, progress) {
 
   data.orbitAngle += data.orbitSpeed;
 
-  // Spiral inward first, then stay in a tight satellite orbit.
-  const convergence = THREE.MathUtils.clamp(age / 9000, 0, 1);
+  // 外側から内側へ短時間で収れんし、その後は惑星近傍を衛星軌道で周回する
+  const convergence = THREE.MathUtils.clamp(age / 6500, 0, 1);
   const easedConvergence = easeOutCubic(convergence);
   data.orbitRadius = THREE.MathUtils.lerp(
     data.initialOrbitRadius || data.orbitRadius,
@@ -1032,13 +1053,13 @@ function updateSNSOrbitParticle(particle, data, age, progress) {
     easedConvergence
   );
 
-  // A slight inward swirl gives a visible converging vortex around the planet.
-  const swirl = 1 + (1 - easedConvergence) * 0.75 * Math.sin(age * 0.006 + data.phase);
+  // 渦巻き感：収れん中だけ半径を波打たせる
+  const swirl = 1 + (1 - easedConvergence) * 0.46 * Math.sin(age * 0.010 + data.phase);
   const activeRadius = data.orbitRadius * swirl;
 
   const x = Math.cos(data.orbitAngle) * activeRadius;
   const z = Math.sin(data.orbitAngle) * activeRadius;
-  const y = Math.sin(data.orbitAngle * 1.25 + data.phase) * activeRadius * 0.18;
+  const y = Math.sin(data.orbitAngle * 1.38 + data.phase) * activeRadius * 0.16;
 
   const offset = new THREE.Vector3(x, y, z);
   offset.applyAxisAngle(new THREE.Vector3(1, 0, 0), data.orbitTiltX);
@@ -1048,7 +1069,7 @@ function updateSNSOrbitParticle(particle, data, age, progress) {
 
   const fadeIn = THREE.MathUtils.clamp(age / data.fadeInMs, 0, 1);
   const fadeOut = progress > 0.76 ? 1 - (progress - 0.76) / 0.24 : 1;
-  const pulse = 0.74 + 0.26 * Math.sin(performance.now() * 0.004 + data.phase);
+  const pulse = 0.76 + 0.24 * Math.sin(performance.now() * 0.005 + data.phase);
   particle.material.opacity = Math.max(0, data.baseOpacity * fadeIn * fadeOut * pulse);
 }
 
@@ -1057,31 +1078,31 @@ function updateNewsCurlParticle(particle, data, age, progress) {
   if (!planet) return;
 
   const target = planet.position.clone();
-  const incomingEnd = target.clone().add(data.startDirection.clone().multiplyScalar(data.orbitRadius * 1.35));
+  const incomingEnd = target.clone().add(data.startDirection.clone().multiplyScalar(data.orbitRadius * 1.18));
 
-  if (progress < 0.48) {
-    const t = easeOutCubic(progress / 0.48);
-    const curveLift = Math.sin(t * Math.PI) * Math.max(14, data.orbitRadius * 1.8);
+  if (progress < 0.46) {
+    const t = easeOutCubic(progress / 0.46);
+    const curveLift = Math.sin(t * Math.PI) * Math.max(10, data.orbitRadius * 1.45);
     const curved = new THREE.Vector3().lerpVectors(data.startPosition, incomingEnd, t)
       .add(data.tangent.clone().multiplyScalar(curveLift));
     particle.position.copy(curved);
     particle.material.opacity = data.baseOpacity * Math.min(1, progress / 0.10);
   } else {
-    const curlT = (progress - 0.48) / 0.52;
+    const curlT = (progress - 0.46) / 0.54;
     const angle = data.orbitAngle + curlT * Math.PI * 2 * data.curlTurns;
 
-    // Spiral radius shrinks, making the particle curl toward the planet before fading.
-    const radius = data.orbitRadius * (1.35 - curlT * 1.05);
+    // 惑星近くでクルリンしながら小さく収れんし、儚く消える
+    const radius = data.orbitRadius * Math.max(0.16, 1.18 - curlT * 0.96);
     const offset = new THREE.Vector3(
       Math.cos(angle) * radius,
-      Math.sin(angle * 1.35 + data.phase) * radius * 0.18,
+      Math.sin(angle * 1.4 + data.phase) * radius * 0.16,
       Math.sin(angle) * radius
     );
     offset.applyAxisAngle(data.tangent, 0.72);
     particle.position.copy(target).add(offset);
 
     const fade = Math.max(0, 1 - curlT * 1.08);
-    const flash = 0.72 + 0.28 * Math.sin(performance.now() * 0.016 + data.phase);
+    const flash = 0.74 + 0.26 * Math.sin(performance.now() * 0.017 + data.phase);
     particle.material.opacity = data.baseOpacity * fade * flash;
 
     if (!data.hasCaptioned && curlT > 0.14) {
@@ -1419,8 +1440,13 @@ function markLatestObservedPlanet(planet) {
   if (!planet) return;
 
   latestObservedPlanet = planet;
+
+  // StackBlitz Consoleで確認できるように外へ出す
   window.__latestObservedPlanet = planet;
   window.__latestObservedPlanetName = planet.userData?.name;
+
+  // 最新観測企業を画面上でも強く発光させる
+  highlightObservedPlanet(planet);
 
   const telescopeButton = document.getElementById('telescope-button');
   if (telescopeButton) {
@@ -1428,15 +1454,20 @@ function markLatestObservedPlanet(planet) {
     telescopeButton.title = `Focus latest observed company: ${planet.userData.name}`;
   }
 
-  highlightObservedPlanet(planet);
+  console.log('[Glovety] Latest observed planet:', planet.userData.name);
 }
 
 function clearObservedPlanetGlow() {
   while (attentionFocusGroup.children.length > 0) {
     const child = attentionFocusGroup.children.pop();
     attentionFocusGroup.remove(child);
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) child.material.dispose();
+    child.traverse?.((node) => {
+      if (node.geometry) node.geometry.dispose();
+      if (node.material) {
+        if (Array.isArray(node.material)) node.material.forEach((m) => m.dispose?.());
+        else node.material.dispose?.();
+      }
+    });
   }
   activeObservedGlow = null;
 }
